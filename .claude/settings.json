@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s https://onlyoffice.wseip.edu.pl/zgloszenie)",
+      "Bash(curl -s https://onlyoffice.wseip.edu.pl/api/public/zgloszenie -X POST -H \"Content-Type: application/json\" -d '{\"email\":\"test@test.pl\",\"opis\":\"Test zglosenia formularz\",\"captchaId\":\"test\",\"captchaAnswer\":\"5\"}')",
+      "Bash(curl -s https://onlyoffice.wseip.edu.pl/api/alerts/count -H \"Authorization: Bearer test\")",
+      "Bash(mysql -uticket '-pLp.dET7\\\\=@%7-E`z' -hlocalhost 13984411_tickiet_zkmotos_pl -e ' *)",
+      "Bash(node -e ' *)",
+      "Bash(mysql -u ticket '-pLp.dET7\\\\=@%7-E`z' 13984411_tickiet_zkmotos_pl)",
+      "Bash(mysql -u ticket '-pLp.dET7\\\\=@%7-E`z' 13984411_tickiet_zkmotos_pl -e \"SHOW COLUMNS FROM korespondencja LIKE 'przeczytane';\")",
+      "Bash(mysql -u ticket '-pLp.dET7\\\\=@%7-E`z' 13984411_tickiet_zkmotos_pl -e \"ALTER TABLE korespondencja ADD COLUMN przeczytane TINYINT\\(1\\) NOT NULL DEFAULT 0; UPDATE korespondencja SET przeczytane = 1 WHERE typ IN \\('reply', 'forward'\\) OR typ IS NULL; SELECT COUNT\\(*\\) as total, SUM\\(przeczytane\\) as read_count FROM korespondencja;\")",
+      "Bash(mysql -u ticket '-pLp.dET7\\\\=@%7-E`z' 13984411_tickiet_zkmotos_pl -e \"ALTER TABLE plik ADD COLUMN originalname VARCHAR\\(255\\) NULL AFTER filepath; SHOW COLUMNS FROM plik;\")",
+      "Bash(ls -la /var/www/html/pomoc/pliki/ 2>&1 | head -20 && echo \"---\" && stat /var/www/html/pomoc/pliki/)",
+      "Read(//var/www/html/pomoc/pliki/**)",
+      "Bash(chown -R www-data:www-data /var/www/html/pomoc/pliki/)"
+    ]
+  }
+}
