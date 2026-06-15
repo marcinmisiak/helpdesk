@@ -1,6 +1,48 @@
 # Helpdesk
 
-System obsługi zgłoszeń zbudowany na Node.js + React. Umożliwia zarządzanie ticketami, komunikację z użytkownikami przez e-mail (IMAP/SMTP), logowanie przez Microsoft/Google OAuth oraz integrację z LDAP i AI (Groq).
+System obsługi zgłoszeń zbudowany na Node.js + React. Zarządzanie ticketami, komunikacja przez e-mail (IMAP/SMTP), logowanie Microsoft/Google OAuth, integracja z LDAP i AI (Groq). Interfejs w języku polskim, angielskim i ukraińskim.
+
+🇬🇧 [English version](README.md)
+
+[![Docker](https://github.com/marcinmisiak/helpdesk/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/marcinmisiak/helpdesk/actions/workflows/docker-publish.yml)
+
+---
+
+## Szybki start — bez pobierania kodu
+
+Najszybszy sposób uruchomienia aplikacji. Potrzebny jest tylko **Docker** i **Docker Compose**.
+
+```bash
+# 1. Pobierz plik konfiguracyjny i szablon ustawień
+curl -O https://raw.githubusercontent.com/marcinmisiak/helpdesk/main/docker-compose.hub.yml
+curl -O https://raw.githubusercontent.com/marcinmisiak/helpdesk/main/.env.example
+
+# 2. Utwórz własny plik konfiguracyjny
+cp .env.example .env
+nano .env
+```
+
+Minimalne ustawienia w `.env`:
+
+```env
+JWT_SECRET=         # losowy klucz — wygeneruj: openssl rand -hex 32
+DB_PASS=            # dowolne hasło do bazy danych
+FRONTEND_URL=       # adres pod którym będzie dostępna aplikacja, np. http://192.168.1.10
+```
+
+```bash
+# 3. Uruchom
+docker compose -f docker-compose.hub.yml up -d
+
+# 4. Utwórz pierwsze konto administratora
+docker compose -f docker-compose.hub.yml exec backend node src/scripts/create-admin.js
+```
+
+Aplikacja dostępna pod `http://localhost` (lub adresem ustawionym w `FRONTEND_URL`).
+
+Docker automatycznie pobierze gotowe obrazy z GitHub Container Registry — bez kompilowania kodu.
+
+---
 
 ## Stos technologiczny
 
@@ -10,58 +52,29 @@ System obsługi zgłoszeń zbudowany na Node.js + React. Umożliwia zarządzanie
 | Frontend | React 19, Vite, Tailwind CSS |
 | Baza danych | MariaDB 11 (Docker) / MySQL 8 (natywny) |
 | Auth | JWT, OAuth 2.0 (Microsoft Entra ID, Google) |
-| E-mail | Nodemailer (SMTP), IMAP polling |
+| E-mail | Nodemailer (SMTP), IMAP polling, Microsoft Graph |
 
 ## Funkcje
 
 - Zarządzanie zgłoszeniami (ticketami) z priorytetami i SLA
-- Korespondencja e-mail zintegrowana z ticketami (odbieranie przez IMAP, wysyłanie przez SMTP)
+- Integracja e-mail — odbiór przez IMAP, wysyłka przez SMTP lub Microsoft Graph (M365)
 - Logowanie przez konto Microsoft lub Google (OAuth 2.0)
-- Logowanie przez LDAP / Active Directory
+- Integracja z LDAP / Active Directory — karta użytkownika w zgłoszeniu z konfigurowalnymi etykietami
 - Klasyfikacja zgłoszeń przez AI (Groq)
 - Powiadomienia push (Web Push API)
+- Wielojęzyczny interfejs: polski, angielski, ukraiński (ustawienie per użytkownik + wykrywanie języka przeglądarki)
 - Role: `admin`, `pracownik`
-- Publiczny formularz zgłoszeniowy (bez logowania)
+- Publiczny formularz zgłoszeniowy (bez logowania) z przełącznikiem języka PL / EN / UA
+- Automatyczne potwierdzenie przyjęcia zgłoszenia e-mailem (opcja do włączenia)
 - Panel statystyk i alertów
+- Automatyczne migracje schematu przy każdym starcie (`db/migrations/`)
+- Wszystkie ustawienia konfigurowane z panelu admina
 
-## Szybki start (Docker)
-
-**Wymagania:** Docker, Docker Compose
-
-```bash
-git clone https://github.com/twoj-uzytkownik/helpdesk.git
-cd helpdesk
-cp .env.example .env
-```
-
-Edytuj `.env` — ustaw co najmniej `JWT_SECRET` oraz hasła bazy danych, potem:
-
-```bash
-docker compose up --build
-```
-
-Aplikacja dostępna pod `http://localhost`.
-
-### Pierwsze logowanie
-
-Po uruchomieniu baza jest pusta — utwórz pierwszego administratora za pomocą dołączonego skryptu:
-
-**Docker:**
-```bash
-docker compose exec backend node src/scripts/create-admin.js
-```
-
-**Natywny:**
-```bash
-cd /var/www/html/helpdesk/backend
-node src/scripts/create-admin.js
-```
-
-Skrypt pyta interaktywnie o e-mail, imię, nazwisko i hasło. Hasło nie jest wyświetlane na ekranie.
+---
 
 ## Konfiguracja
 
-Skopiuj `.env.example` → `.env` i uzupełnij:
+Wszystkie wartości wpisuje się do `.env` (skopiuj z `.env.example`):
 
 | Zmienna | Opis | Wymagana |
 |---|---|---|
@@ -73,33 +86,23 @@ Skopiuj `.env.example` → `.env` i uzupełnij:
 | `VAPID_*` | Web Push (generuj: `npx web-push generate-vapid-keys`) | ☑️ opcjonalna |
 | `GROQ_API_KEY` | Klasyfikacja AI (groq.com) | ☑️ opcjonalna |
 
-Ustawienia SMTP, IMAP i LDAP konfiguruje się z poziomu panelu admina (Ustawienia).
+Ustawienia SMTP, IMAP, Microsoft Graph i LDAP konfiguruje się z poziomu panelu admina (Ustawienia) — bez restartu.
 
-## OAuth Microsoft
+---
 
-1. [portal.azure.com](https://portal.azure.com) → Azure Active Directory → App registrations → New registration
-2. Redirect URI: `https://twojadomena.pl/api/auth/microsoft/callback` (typ: Web)
-3. Certificates & secrets → New client secret → skopiuj wartość
-4. Uzupełnij `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` w `.env`
+## Budowanie ze źródeł (Docker)
 
-Logowanie przez Microsoft działa tylko dla użytkowników z istniejącym kontem (ten sam e-mail).
-
-## Migracje bazy danych
-
-Przy starcie backend automatycznie stosuje pliki SQL z `db/migrations/`.
-
-Aby dodać zmianę schematu:
+Dla developerów, którzy chcą modyfikować kod:
 
 ```bash
-# Utwórz plik migracji
-echo "ALTER TABLE ticket ADD COLUMN priorytet_niestandardowy tinyint DEFAULT 0;" \
-  > db/migrations/0001_priorytet_niestandardowy.sql
-
-# Zastosuj (restart backendu)
-docker compose restart backend
-# lub natywnie:
-systemctl restart helpdesk
+git clone https://github.com/marcinmisiak/helpdesk.git
+cd helpdesk
+cp .env.example .env
+# edytuj .env
+docker compose up --build
 ```
+
+---
 
 ## Instalacja natywna (Linux + Apache)
 
@@ -112,8 +115,6 @@ npm run frontend:build       # build frontendu → frontend/dist/
 # Uruchom jako usługę systemd
 ```
 
-Szczegóły konfiguracji Apache i systemd zależą od środowiska serwera.
-
 ## Rozwój lokalny
 
 ```bash
@@ -123,23 +124,61 @@ npm run backend:dev    # backend z nodemon na :3001
 npm run frontend       # Vite dev server na :5173
 ```
 
+---
+
+## OAuth Microsoft
+
+1. [portal.azure.com](https://portal.azure.com) → Azure Active Directory → App registrations → New registration
+2. Redirect URI: `https://twojadomena.pl/api/auth/microsoft/callback` (typ: Web)
+3. Certificates & secrets → New client secret → skopiuj wartość
+4. Uzupełnij `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` w `.env`
+
+Logowanie przez Microsoft działa tylko dla użytkowników z istniejącym kontem (ten sam e-mail).
+
+---
+
+## LDAP / Active Directory
+
+Gdy LDAP jest włączony, na każdym zgłoszeniu wyświetla się **karta użytkownika** z danymi z katalogu. Konfiguracja z panelu admina (Ustawienia → LDAP):
+
+- Włącz / wyłącz kartę globalnie
+- Zdefiniuj etykiety dla typów użytkowników (np. Student, Pracownik, Wykładowca)
+- Każda etykieta ma warunek (atrybut LDAP + oczekiwana wartość)
+- Opcjonalny link zewnętrzny z szablonem URL używającym `{nazwaAtrybutu}`
+
+```
+https://erp.firma.pl/pracownik/{employeeNumber}
+https://dziekanat.uczelnia.pl/student/{uid}
+```
+
+---
+
+## Migracje bazy danych
+
+Przy każdym starcie backend automatycznie stosuje pliki SQL z `db/migrations/`. Działa bezpiecznie na MariaDB i MySQL 8 — błędy „kolumna już istnieje" są pomijane.
+
+---
+
 ## Struktura projektu
 
 ```
 helpdesk/
-├── backend/          # Express API
+├── backend/              # Express API
 │   └── src/
-│       ├── routes/   # Endpointy API
+│       ├── routes/       # Endpointy API
 │       ├── middleware/
+│       ├── i18n/         # Tłumaczenia e-maili (pl / en / uk)
 │       └── utils/
-├── frontend/         # React SPA
+├── frontend/             # React SPA
 │   └── src/
 │       ├── pages/
-│       └── components/
+│       ├── components/
+│       └── i18n/         # Tłumaczenia interfejsu (pl / en / uk)
 ├── db/
-│   ├── schema.sql        # Schemat początkowy (MariaDB init)
-│   └── migrations/       # Przyrostowe zmiany SQL
-└── docker-compose.yml
+│   ├── schema.sql            # Schemat początkowy (MariaDB init)
+│   └── migrations/           # Przyrostowe zmiany SQL
+├── docker-compose.yml        # Budowanie ze źródeł
+└── docker-compose.hub.yml    # Uruchomienie z gotowych obrazów (użytkownicy końcowi)
 ```
 
 ## Licencja

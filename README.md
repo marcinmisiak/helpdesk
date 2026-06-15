@@ -1,8 +1,48 @@
 # Helpdesk
 
-A helpdesk and ticket management system built with Node.js + React. Supports e-mail integration (IMAP/SMTP), Microsoft/Google OAuth login, LDAP/Active Directory, and AI-powered ticket classification (Groq).
+A helpdesk and ticket management system built with Node.js + React. Supports e-mail integration (IMAP/SMTP), Microsoft/Google OAuth login, LDAP/Active Directory, AI-powered ticket classification (Groq), and multilingual interface (Polish / English / Ukrainian).
 
-🇵🇱 [Polish version / Wersja polska](README.pl.md)
+🇵🇱 [Wersja polska](README.pl.md)
+
+[![Docker](https://github.com/marcinmisiak/helpdesk/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/marcinmisiak/helpdesk/actions/workflows/docker-publish.yml)
+
+---
+
+## Quick Start — no code needed
+
+The fastest way to run the app. Requires only **Docker** and **Docker Compose**.
+
+```bash
+# 1. Download the compose file and config template
+curl -O https://raw.githubusercontent.com/marcinmisiak/helpdesk/main/docker-compose.hub.yml
+curl -O https://raw.githubusercontent.com/marcinmisiak/helpdesk/main/.env.example
+
+# 2. Create your config
+cp .env.example .env
+nano .env
+```
+
+Minimum required settings in `.env`:
+
+```env
+JWT_SECRET=         # random key — generate with: openssl rand -hex 32
+DB_PASS=            # any password for the database
+FRONTEND_URL=       # URL where the app will be accessible, e.g. http://192.168.1.10
+```
+
+```bash
+# 3. Start
+docker compose -f docker-compose.hub.yml up -d
+
+# 4. Create the first admin account
+docker compose -f docker-compose.hub.yml exec backend node src/scripts/create-admin.js
+```
+
+The app will be available at `http://localhost` (or the address set in `FRONTEND_URL`).
+
+Docker automatically downloads the pre-built images from GitHub Container Registry — no compilation required.
+
+---
 
 ## Tech Stack
 
@@ -12,60 +52,29 @@ A helpdesk and ticket management system built with Node.js + React. Supports e-m
 | Frontend | React 19, Vite, Tailwind CSS |
 | Database | MariaDB 11 (Docker) / MySQL 8 (native) |
 | Auth | JWT, OAuth 2.0 (Microsoft Entra ID, Google) |
-| E-mail | Nodemailer (SMTP), IMAP polling |
+| E-mail | Nodemailer (SMTP), IMAP polling, Microsoft Graph |
 
 ## Features
 
 - Ticket management with priorities and SLA tracking
 - E-mail integration — receive via IMAP, send via SMTP or Microsoft Graph (M365), threads linked to tickets
-- Microsoft and Google OAuth 2.0 login (buttons shown automatically when credentials are set)
+- Microsoft and Google OAuth 2.0 login
 - LDAP / Active Directory user lookup with configurable user-type cards and external system links
 - AI ticket classification (Groq)
 - Web Push notifications
+- Multilingual interface: Polish, English, Ukrainian (per-user setting + browser auto-detection)
 - Roles: `admin`, `pracownik` (agent)
-- Public submission form (no login required)
+- Public submission form (no login required) with language switcher PL / EN / UA
+- Automatic registration confirmation email (configurable)
 - Statistics and alerts dashboard
 - Automatic schema migrations on every startup (`db/migrations/`)
-- All settings configurable from the admin panel — app name, branding, SMTP, LDAP, reminders
+- All settings configurable from the admin panel
 
-## Quick Start (Docker)
-
-**Requirements:** Docker, Docker Compose
-
-```bash
-git clone https://github.com/your-username/helpdesk.git
-cd helpdesk
-cp .env.example .env
-```
-
-Edit `.env` — set at minimum `JWT_SECRET` and database passwords, then:
-
-```bash
-docker compose up --build
-```
-
-The app will be available at `http://localhost`.
-
-### Creating the first admin account
-
-The database starts empty — use the bundled script to create the first admin:
-
-**Docker:**
-```bash
-docker compose exec backend node src/scripts/create-admin.js
-```
-
-**Native:**
-```bash
-cd /var/www/html/helpdesk/backend
-node src/scripts/create-admin.js
-```
-
-The script asks for e-mail, first name, last name, and password interactively. The password is never shown on screen.
+---
 
 ## Configuration
 
-Copy `.env.example` → `.env` and fill in the values:
+All values go in `.env` (copy from `.env.example`):
 
 | Variable | Description | Required |
 |---|---|---|
@@ -77,57 +86,23 @@ Copy `.env.example` → `.env` and fill in the values:
 | `VAPID_*` | Web Push (generate: `npx web-push generate-vapid-keys`) | ☑️ optional |
 | `GROQ_API_KEY` | AI classification (groq.com) | ☑️ optional |
 
-SMTP, IMAP, Microsoft Graph, and LDAP settings are configured from the admin panel (Settings).
+SMTP, IMAP, Microsoft Graph, and LDAP settings are configured from the admin panel (Settings) — no restart required.
 
-### App name in e-mail subjects
+---
 
-The **app name** set in Settings (admin panel → General) is used as a prefix in every outgoing e-mail subject:
+## Building from Source (Docker)
 
-```
-[YourAppName] New ticket #42
-[YourAppName] Reminder: 3 tickets waiting for a reply
-```
-
-Changing the name takes effect immediately for all subsequent messages.
-
-## Microsoft OAuth Setup
-
-1. Go to [portal.azure.com](https://portal.azure.com) → Azure Active Directory → App registrations → New registration
-2. Set Redirect URI: `https://yourdomain.com/api/auth/microsoft/callback` (type: Web)
-3. Go to Certificates & secrets → New client secret → copy the **Value**
-4. Fill in `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` in `.env`
-
-> Microsoft login only works for users who already have an account in the system with the same e-mail address.
-
-## LDAP User Card
-
-When LDAP is enabled, each ticket shows a **user card** with information fetched from the directory. The card is fully configurable from the admin panel (Settings → LDAP → Card in ticket view):
-
-- **Enable / disable** the card globally
-- Define **labels** for different user types (e.g. Student, Employee, Lecturer)
-- Each label has a **condition** (LDAP attribute + expected value) that determines when it matches
-- Optional **external link** with a URL template — use `{attrName}` placeholders for LDAP attributes:
-
-```
-https://erp.company.com/users/{employeeNumber}
-https://portal.university.edu/student/{uid}
-```
-
-Labels are checked in order; the first matching one is displayed.
-
-## Database Migrations
-
-On every startup the backend automatically applies any pending SQL files from `db/migrations/`.
-
-To add a schema change:
+For developers who want to modify the code:
 
 ```bash
-echo "ALTER TABLE ticket ADD COLUMN custom_priority tinyint DEFAULT 0;" \
-  > db/migrations/0001_custom_priority.sql
-
-# Apply by restarting the backend
-docker compose restart backend
+git clone https://github.com/marcinmisiak/helpdesk.git
+cd helpdesk
+cp .env.example .env
+# edit .env
+docker compose up --build
 ```
+
+---
 
 ## Native Installation (Linux + Apache)
 
@@ -149,6 +124,41 @@ npm run backend:dev    # backend with nodemon on :3001
 npm run frontend       # Vite dev server on :5173
 ```
 
+---
+
+## Microsoft OAuth Setup
+
+1. Go to [portal.azure.com](https://portal.azure.com) → Azure Active Directory → App registrations → New registration
+2. Set Redirect URI: `https://yourdomain.com/api/auth/microsoft/callback` (type: Web)
+3. Go to Certificates & secrets → New client secret → copy the **Value**
+4. Fill in `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` in `.env`
+
+> Microsoft login only works for users who already have an account in the system with the same e-mail address.
+
+---
+
+## LDAP / Active Directory
+
+When LDAP is enabled, each ticket shows a **user card** with information fetched from the directory. Fully configurable from the admin panel (Settings → LDAP):
+
+- Enable / disable the card globally
+- Define labels for user types (e.g. Student, Employee, Lecturer)
+- Each label has a condition (LDAP attribute + expected value)
+- Optional external link with a URL template using `{attrName}` placeholders
+
+```
+https://erp.company.com/users/{employeeNumber}
+https://portal.university.edu/student/{uid}
+```
+
+---
+
+## Database Migrations
+
+On every startup the backend automatically applies any pending SQL files from `db/migrations/`. Safe on both MariaDB and MySQL 8 — "already exists" errors are silently ignored.
+
+---
+
 ## Project Structure
 
 ```
@@ -157,15 +167,18 @@ helpdesk/
 │   └── src/
 │       ├── routes/       # API endpoints
 │       ├── middleware/
+│       ├── i18n/         # Email translations (pl / en / uk)
 │       └── utils/
 ├── frontend/             # React SPA
 │   └── src/
 │       ├── pages/
-│       └── components/
+│       ├── components/
+│       └── i18n/         # UI translations (pl / en / uk)
 ├── db/
 │   ├── schema.sql        # Initial schema (MariaDB init on first boot)
 │   └── migrations/       # Incremental SQL changes
-└── docker-compose.yml
+├── docker-compose.yml        # Build from source
+└── docker-compose.hub.yml    # Run from pre-built images (end users)
 ```
 
 ## License
