@@ -26,3 +26,8 @@ install.sh
 .vscode/
 *.swp
 .claudle/
+
+# Pliki konfiguracyjne AI (lokalne instrukcje, nie dla repozytorium)
+CLAUDE.md
+AGENTS.md
+.claude/
