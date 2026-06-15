@@ -1,14 +1,20 @@
 const webpush = require('web-push');
 const pool = require('../config/db');
 
-webpush.setVapidDetails(
-  process.env.VAPID_EMAIL,
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
+const vapidEnabled = !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_EMAIL);
+
+if (vapidEnabled) {
+  webpush.setVapidDetails(
+    process.env.VAPID_EMAIL,
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+} else {
+  console.log('[webpush] VAPID keys not configured — push notifications disabled');
+}
 
 async function notifyUsers(userIds, payload) {
-  if (!userIds?.length) return;
+  if (!vapidEnabled || !userIds?.length) return;
   const placeholders = userIds.map(() => '?').join(',');
   const [subs] = await pool.query(
     `SELECT id, user_id, endpoint, p256dh, auth FROM push_subscription WHERE user_id IN (${placeholders})`,
