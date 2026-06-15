@@ -10,37 +10,108 @@ System obsługi zgłoszeń zbudowany na Node.js + React. Zarządzanie ticketami,
 
 ## Szybki start — bez pobierania kodu
 
-Najszybszy sposób uruchomienia aplikacji. Potrzebny jest tylko **Docker** i **Docker Compose**.
+Najszybszy sposób uruchomienia aplikacji. Potrzebny jest tylko **Docker** i **Docker Compose v2**.
+
+### Krok 1 — Zainstaluj Docker Compose v2 (jeśli potrzebne)
+
+> Pomiń ten krok jeśli `docker compose version` pokazuje już `v2.x.x`.
+
+Stary `docker-compose` (v1, oparty na Pythonie) **nie działa** na Pythonie 3.12+. Zainstaluj plugin v2:
+
+**Ubuntu / Debian (oficjalne repo Dockera):**
+```bash
+sudo apt install docker-compose-plugin
+```
+
+**Jeśli pakiet nie zostanie znaleziony** (Docker zainstalowany z repozytoriów systemowych, nie z docker.com):
+```bash
+mkdir -p ~/.docker/cli-plugins
+curl -SL https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-linux-x86_64 \
+  -o ~/.docker/cli-plugins/docker-compose
+chmod +x ~/.docker/cli-plugins/docker-compose
+```
+
+Weryfikacja: `docker compose version` → powinno wyświetlić `Docker Compose version v2.x.x`
+
+---
+
+### Krok 2 — Pobierz pliki konfiguracyjne
 
 ```bash
-# 1. Pobierz plik konfiguracyjny i szablon ustawień
 curl -O https://raw.githubusercontent.com/marcinmisiak/helpdesk/main/docker-compose.hub.yml
 curl -O https://raw.githubusercontent.com/marcinmisiak/helpdesk/main/.env.example
-
-# 2. Utwórz własny plik konfiguracyjny
 cp .env.example .env
 nano .env
 ```
 
-Minimalne ustawienia w `.env`:
+### Krok 3 — Skonfiguruj `.env`
+
+Minimalne wymagane wartości:
 
 ```env
-JWT_SECRET=         # losowy klucz — wygeneruj: openssl rand -hex 32
-DB_PASS=            # dowolne hasło do bazy danych
-FRONTEND_URL=       # adres pod którym będzie dostępna aplikacja, np. http://192.168.1.10
+JWT_SECRET=          # losowy klucz — wygeneruj: openssl rand -hex 32
+DB_PASS=             # dowolne hasło do bazy danych
+FRONTEND_URL=        # adres aplikacji, np. http://192.168.1.10
 ```
 
-```bash
-# 3. Uruchom
-docker compose -f docker-compose.hub.yml up -d
+**Powiadomienia push (opcjonalne, ale zalecane):**
 
-# 4. Utwórz pierwsze konto administratora
+Wygeneruj klucze VAPID — możesz do tego użyć samego Dockera:
+```bash
+docker run --rm node:22-alpine sh -c \
+  "npm install -g web-push --silent 2>/dev/null && web-push generate-vapid-keys"
+```
+
+Dopisz wynik do `.env`:
+```env
+VAPID_EMAIL=mailto:admin@twojadomena.pl
+VAPID_PUBLIC_KEY=<wklej Public Key>
+VAPID_PRIVATE_KEY=<wklej Private Key>
+```
+
+> Jeśli pominiesz klucze VAPID, powiadomienia push będą wyłączone, ale aplikacja działa normalnie.
+
+---
+
+### Krok 4 — Uruchom
+
+```bash
+docker compose -f docker-compose.hub.yml up -d
+```
+
+Docker automatycznie pobiera gotowe obrazy (~200 MB). Poczekaj aż wszystkie trzy kontenery pokażą `Up`:
+
+```bash
+docker ps
+# helpdesk-db-1        Up (healthy)
+# helpdesk-backend-1   Up
+# helpdesk-frontend-1  Up
+```
+
+> **Jeśli frontend ciągle się restartuje** podczas gdy backend dopiero startuje, zrestartuj go raz ręcznie:
+> ```bash
+> docker restart helpdesk-frontend-1
+> ```
+> Dzieje się tak dlatego, że nginx startuje przed backendem i nie może rozwiązać nazwy hosta `backend`.
+
+---
+
+### Krok 5 — Utwórz pierwsze konto administratora
+
+```bash
 docker compose -f docker-compose.hub.yml exec backend node src/scripts/create-admin.js
 ```
 
-Aplikacja dostępna pod `http://localhost` (lub adresem ustawionym w `FRONTEND_URL`).
+Skrypt pyta o e-mail, imię, nazwisko i hasło. Następnie otwórz `http://localhost` i zaloguj się.
 
-Docker automatycznie pobierze gotowe obrazy z GitHub Container Registry — bez kompilowania kodu.
+---
+
+### Aktualizacja do najnowszej wersji
+
+```bash
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
+```
 
 ---
 

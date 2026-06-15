@@ -10,37 +10,108 @@ A helpdesk and ticket management system built with Node.js + React. Supports e-m
 
 ## Quick Start — no code needed
 
-The fastest way to run the app. Requires only **Docker** and **Docker Compose**.
+The fastest way to run the app. Requires only **Docker** and **Docker Compose v2**.
+
+### Step 1 — Install Docker Compose v2 (if needed)
+
+> Skip this if `docker compose version` already shows `v2.x.x`.
+
+The old `docker-compose` (v1, Python-based) does **not** work on Python 3.12+. Install the v2 plugin:
+
+**Ubuntu / Debian (official Docker repo):**
+```bash
+sudo apt install docker-compose-plugin
+```
+
+**If the package is not found** (Docker installed from system repos, not docker.com):
+```bash
+mkdir -p ~/.docker/cli-plugins
+curl -SL https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-linux-x86_64 \
+  -o ~/.docker/cli-plugins/docker-compose
+chmod +x ~/.docker/cli-plugins/docker-compose
+```
+
+Verify: `docker compose version` → should print `Docker Compose version v2.x.x`
+
+---
+
+### Step 2 — Download config files
 
 ```bash
-# 1. Download the compose file and config template
 curl -O https://raw.githubusercontent.com/marcinmisiak/helpdesk/main/docker-compose.hub.yml
 curl -O https://raw.githubusercontent.com/marcinmisiak/helpdesk/main/.env.example
-
-# 2. Create your config
 cp .env.example .env
 nano .env
 ```
 
-Minimum required settings in `.env`:
+### Step 3 — Configure `.env`
+
+Minimum required values:
 
 ```env
-JWT_SECRET=         # random key — generate with: openssl rand -hex 32
-DB_PASS=            # any password for the database
-FRONTEND_URL=       # URL where the app will be accessible, e.g. http://192.168.1.10
+JWT_SECRET=          # random key — generate with: openssl rand -hex 32
+DB_PASS=             # any database password
+FRONTEND_URL=        # URL where the app will run, e.g. http://192.168.1.10
 ```
 
-```bash
-# 3. Start
-docker compose -f docker-compose.hub.yml up -d
+**Web Push notifications (optional but recommended):**
 
-# 4. Create the first admin account
+Generate VAPID keys — you can use Docker itself for this:
+```bash
+docker run --rm node:22-alpine sh -c \
+  "npm install -g web-push --silent 2>/dev/null && web-push generate-vapid-keys"
+```
+
+Add the output to `.env`:
+```env
+VAPID_EMAIL=mailto:admin@yourdomain.com
+VAPID_PUBLIC_KEY=<paste Public Key>
+VAPID_PRIVATE_KEY=<paste Private Key>
+```
+
+> If you skip VAPID keys, push notifications will be disabled but the app works normally.
+
+---
+
+### Step 4 — Start
+
+```bash
+docker compose -f docker-compose.hub.yml up -d
+```
+
+Docker downloads the pre-built images automatically (~200 MB). Wait until all three containers show `Up`:
+
+```bash
+docker ps
+# helpdesk-db-1        Up (healthy)
+# helpdesk-backend-1   Up
+# helpdesk-frontend-1  Up
+```
+
+> **If the frontend keeps restarting** while the backend is starting up, restart it once manually:
+> ```bash
+> docker restart helpdesk-frontend-1
+> ```
+> This happens because nginx starts before the backend is ready and can't resolve the `backend` hostname yet.
+
+---
+
+### Step 5 — Create the first admin account
+
+```bash
 docker compose -f docker-compose.hub.yml exec backend node src/scripts/create-admin.js
 ```
 
-The app will be available at `http://localhost` (or the address set in `FRONTEND_URL`).
+The script asks for e-mail, first name, last name, and password. Then open `http://localhost` and log in.
 
-Docker automatically downloads the pre-built images from GitHub Container Registry — no compilation required.
+---
+
+### Updating to the latest version
+
+```bash
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
+```
 
 ---
 
