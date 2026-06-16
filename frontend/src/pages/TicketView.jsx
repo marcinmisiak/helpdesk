@@ -321,6 +321,10 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
       } else {
         toast.success(zamknij ? t('ticket_view.toast_reply_sent_closed') : t('ticket_view.toast_reply_sent'));
       }
+      if (resp.statusChanged) {
+        const statusName = resp.newStatus === 2 ? t('ticket_view.status_inprogress') : resp.newStatus === 3 ? t('ticket_view.status_closed') : t('ticket_view.status_new');
+        toast.success(t('ticket_view.toast_status_changed_to', { status: statusName }));
+      }
       onSuccess();
       onClose();
     } catch (err) {

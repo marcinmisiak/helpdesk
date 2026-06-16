@@ -417,6 +417,7 @@
     "reply_send": "Send",
     "toast_reply_sent_closed": "Reply sent — ticket closed",
     "toast_reply_sent": "Reply sent",
+    "toast_status_changed_to": "Status changed to {{status}}",
     "toast_reply_mail_error": "Reply saved but email failed: {{error}}",
     "reply_error_fields": "Please fill in recipient and content",
     "toast_ai_suggestion": "AI suggestion inserted — review before sending",

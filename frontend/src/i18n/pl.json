@@ -417,6 +417,7 @@
     "reply_send": "Wyślij",
     "toast_reply_sent_closed": "Odpowiedź wysłana — zgłoszenie zamknięte",
     "toast_reply_sent": "Odpowiedź wysłana",
+    "toast_status_changed_to": "Zmieniono status na {{status}}",
     "toast_reply_mail_error": "Odpowiedź zapisana, ale email nie wyszedł: {{error}}",
     "reply_error_fields": "Uzupełnij adresata i treść",
     "toast_ai_suggestion": "Podpowiedź AI wstawiona — przejrzyj przed wysłaniem",

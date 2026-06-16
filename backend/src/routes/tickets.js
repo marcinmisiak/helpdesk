@@ -120,7 +120,7 @@ router.get('/moje', async (req, res) => {
        FROM ticket t
        INNER JOIN user_has_ticket uht ON uht.ticket_id = t.id AND uht.user_id = ?
        LEFT JOIN user u ON u.id = uht.user_id
-       WHERE t.status = 2 AND (t.odlozony = 0 OR t.odlozony IS NULL)
+       WHERE t.status != 3 AND (t.odlozony = 0 OR t.odlozony IS NULL)
        GROUP BY t.id
        ORDER BY t.id DESC`,
       [req.user.id]
@@ -753,6 +753,8 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
     const [ticket] = await pool.query('SELECT * FROM ticket WHERE id=?', [req.params.id]);
     if (!ticket.length) return res.status(404).json({ error: 'Ticket nie znaleziony' });
 
+    const oldStatus = ticket[0].status;
+
     const [kResult] = await pool.query(
       `INSERT INTO korespondencja (ticket_id, data, created_by, updated_by, created_at, updated_at, tresc, html, message_to, message_cc, message_subject, message_from, przeczytane)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
@@ -770,6 +772,10 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
         'INSERT INTO user_has_ticket (ticket_id, user_id, data, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [req.params.id, req.user.id, now, req.user.id, req.user.id, now, now]
       );
+    }
+    // zawsze ustaw status=2 przy odpowiedzi (chyba że zamknięcie)
+    const closing = zamknij === '1' || zamknij === true || zamknij === 1;
+    if (!closing && oldStatus !== 3) {
       await pool.query('UPDATE ticket SET status=2 WHERE id=?', [req.params.id]);
     }
 
@@ -780,9 +786,12 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
     }
 
     // Zamknij ticket jeśli zaznaczono (zamknij przychodzi jako string '0'/'1' z FormData)
-    if (zamknij === '1' || zamknij === true || zamknij === 1) {
+    if (closing) {
       await pool.query('UPDATE ticket SET status=3, data_zamkniecia=?, odlozony=0 WHERE id=?', [now, req.params.id]);
     }
+
+    const newStatus = closing ? 3 : (oldStatus !== 3 ? 2 : 3);
+    const statusChanged = oldStatus !== newStatus;
 
     // Zapisz załączniki do DB
     const savedFiles = [];
@@ -849,7 +858,7 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
       url: `/tickets/${req.params.id}`,
     }).catch(() => {});
 
-    res.json({ success: true, korespondencja_id: kResult.insertId, mailError });
+    res.json({ success: true, korespondencja_id: kResult.insertId, mailError, statusChanged, newStatus });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
