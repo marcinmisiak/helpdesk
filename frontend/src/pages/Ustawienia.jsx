@@ -775,9 +775,32 @@ function MailboxCleanupPanel({ form, set, setCheck }) {
                 <p className="text-slate-400">w skrzynce</p>
               </div>
               <div className="text-center">
-                <p className="text-slate-500 mb-0.5">Wszystkie foldery</p>
-                <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{stats.totalItems}</p>
-                <p className="text-slate-400">łącznie</p>
+                {stats.storageUsedInBytes != null ? (
+                  <>
+                    <p className="text-slate-500 mb-0.5">Zajętość skrzynki</p>
+                    <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                      {stats.storageUsedInBytes >= 1073741824
+                        ? (stats.storageUsedInBytes / 1073741824).toFixed(2) + ' GB'
+                        : (stats.storageUsedInBytes / 1048576).toFixed(0) + ' MB'}
+                    </p>
+                    <p className="text-slate-400">
+                      {stats.quotaInBytes
+                        ? `z ${stats.quotaInBytes >= 1073741824 ? (stats.quotaInBytes / 1073741824).toFixed(0) + ' GB' : (stats.quotaInBytes / 1048576).toFixed(0) + ' MB'} limitu`
+                        : `${stats.totalItems} wiad. łącznie`}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-slate-500 mb-0.5">Inbox + Sent + Spam…</p>
+                    <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{stats.totalItems}</p>
+                    <p className="text-slate-400">wiadomości łącznie</p>
+                    {stats.storageError && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1" title={stats.storageError}>
+                        ⚠ zajętość niedostępna
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           )}

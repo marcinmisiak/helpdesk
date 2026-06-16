@@ -209,21 +209,60 @@ async function getMailboxStats(settings) {
   const mailbox = settings.ms_graph_mailbox;
   if (!mailbox) throw new Error('Brak ms_graph_mailbox w ustawieniach');
 
-  // sizeInBytes jest tylko w beta — v1.0 zwraca totalItemCount i unreadItemCount
-  const res = await fetch(
-    `${GRAPH_BASE}/users/${encodeURIComponent(mailbox)}/mailFolders?$select=displayName,totalItemCount,unreadItemCount&$top=100`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Graph getMailboxStats error ${res.status}`);
+  const [foldersRes, reportRes] = await Promise.all([
+    fetch(
+      `${GRAPH_BASE}/users/${encodeURIComponent(mailbox)}/mailFolders?$select=displayName,totalItemCount,unreadItemCount&$top=100`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ),
+    fetch(
+      `${GRAPH_BASE}/reports/getMailboxUsageDetail(period='D7')?$format=application/json`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ),
+  ]);
+
+  if (!foldersRes.ok) {
+    const err = await foldersRes.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Graph getMailboxStats error ${foldersRes.status}`);
   }
-  const data = await res.json();
-  const folders = data.value || [];
-  const totalItems = folders.reduce((sum, f) => sum + (f.totalItemCount || 0), 0);
-  const inbox = folders.find(f => f.displayName === 'Inbox' || f.displayName === 'Skrzynka odbiorcza');
+  const foldersData = await foldersRes.json();
+  const folders = foldersData.value || [];
+  const inbox = folders.find(f => ['Inbox', 'Skrzynka odbiorcza'].includes(f.displayName));
+  // sumuj tylko znane foldery — ukryte foldery Exchange (Recoverable Items itp.) zawyżają wynik
+  const VISIBLE = ['Inbox', 'Skrzynka odbiorcza', 'Sent Items', 'SentItems', 'Elementy wysłane',
+    'Deleted Items', 'DeletedItems', 'Usunięte', 'Junk Email', 'JunkEmail', 'Wiadomości-śmieci',
+    'Drafts', 'Wersje robocze', 'Archive', 'Archiwum', 'Outbox', 'Skrzynka nadawcza'];
+  const totalItems = folders
+    .filter(f => VISIBLE.includes(f.displayName))
+    .reduce((sum, f) => sum + (f.totalItemCount || 0), 0);
+
+  let storageUsedInBytes = null;
+  let quotaInBytes = null;
+  let storageError = null;
+  if (reportRes.ok) {
+    const reportData = await reportRes.json();
+    const entry = (reportData.value || []).find(
+      r => r.userPrincipalName?.toLowerCase() === mailbox.toLowerCase()
+    );
+    if (entry) {
+      storageUsedInBytes = entry.storageUsedInBytes ?? null;
+      quotaInBytes = entry.prohibitSendReceiveQuotaInBytes ?? null;
+    } else {
+      storageError = 'Skrzynka nie znaleziona w raporcie (dane mogą być do 48h opóźnione)';
+    }
+  } else {
+    const errBody = await reportRes.json().catch(() => ({}));
+    if (reportRes.status === 403) {
+      storageError = 'Brak uprawnienia Reports.Read.All w aplikacji Azure AD';
+    } else {
+      storageError = errBody.error?.message || `Błąd API raportów (${reportRes.status})`;
+    }
+  }
+
   return {
     totalItems,
+    storageUsedInBytes,
+    quotaInBytes,
+    storageError,
     inboxItems: inbox?.totalItemCount || 0,
     inboxUnread: inbox?.unreadItemCount || 0,
   };
