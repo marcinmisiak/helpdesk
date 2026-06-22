@@ -405,7 +405,11 @@ router.get('/microsoft/callback', async (req, res) => {
     const email = profile.mail || profile.userPrincipalName;
     if (!email) throw new Error('Brak email od Microsoft');
 
-    const jwt_token = await handleOAuthLogin('microsoft', profile.id, email);
+    const jwt_token = await handleOAuthLogin('microsoft', profile.id, email, {
+      autoProvision: true,
+      imie: profile.givenName || profile.displayName || '',
+      nazwisko: profile.surname || '',
+    });
     res.redirect(`${frontendUrl}/auth/callback?token=${jwt_token}`);
   } catch (err) {
     console.error('[microsoft/callback]', err.message);
@@ -416,7 +420,7 @@ router.get('/microsoft/callback', async (req, res) => {
 // ============================================================
 // Wspólna logika OAuth login/linkowania konta
 // ============================================================
-async function handleOAuthLogin(provider, providerId, email) {
+async function handleOAuthLogin(provider, providerId, email, { autoProvision = false, imie = '', nazwisko = '' } = {}) {
   // 1. Szukaj istniejącego powiązania OAuth
   const [oauthRows] = await pool.query(
     `SELECT u.id, u.email, u.imie, u.nazwisko, u.status, aa.item_name as rola
@@ -441,12 +445,32 @@ async function handleOAuthLogin(provider, providerId, email) {
     );
 
     if (!userRows.length) {
-      throw new Error('Brak konta powiązanego z tym adresem email. Skontaktuj się z administratorem.');
+      if (!autoProvision) {
+        throw new Error('Brak konta powiązanego z tym adresem email. Skontaktuj się z administratorem.');
+      }
+
+      // Brak konta — automatycznie zakładamy nowe, nieuprzywilejowane konto (rola "user").
+      // Rola "user" nie ma żadnych uprawnień w tej aplikacji (requireWorker/requireAdmin jej
+      // nie obejmują) — to bezpieczny placeholder; admin może później ręcznie awansować
+      // konto do "pracownik" w /uzytkownicy.
+      const now = Math.floor(Date.now() / 1000);
+      const randomPassword = await bcrypt.hash(crypto.randomUUID(), 13);
+      const authKey = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      const [result] = await pool.query(
+        'INSERT INTO user (email, password, auth_key, status, imie, nazwisko, created_at, updated_at) VALUES (?, ?, ?, 10, ?, ?, ?, ?)',
+        [email, randomPassword, authKey, imie.slice(0, 20), nazwisko.slice(0, 45), now, now]
+      );
+      await pool.query(
+        'INSERT INTO auth_assignment (item_name, user_id, created_at) VALUES (?, ?, ?)',
+        ['user', result.insertId, now]
+      );
+
+      user = { id: result.insertId, email, imie, nazwisko, status: 10, rola: 'user' };
+    } else {
+      user = userRows[0];
     }
 
-    user = userRows[0];
-
-    // Powiąż konto OAuth z istniejącym użytkownikiem
+    // Powiąż konto OAuth z (istniejącym lub nowo utworzonym) użytkownikiem
     await pool.query(
       'INSERT INTO user_oauth (user_id, provider, provider_id, created_at) VALUES (?, ?, ?, ?)',
       [user.id, provider, providerId, Math.floor(Date.now() / 1000)]

@@ -9,6 +9,8 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import SLABadge from '../components/SLABadge';
 import AITagBadge from '../components/AITagBadge';
+import PrzydielModal from '../components/PrzydielModal';
+import LdapPanel from '../components/LdapPanel';
 
 // Wymusza białe tło i czarny tekst wewnątrz iframe z treścią e-mail.
 function wrapEmailHtml(html) {
@@ -20,6 +22,7 @@ function wrapEmailHtml(html) {
 
 const STATUS_COLORS = { 1: 'badge-red', 2: 'badge-yellow', 3: 'badge-gray' };
 const PRIORITY_LABELS = { 1: 'P1', 2: 'P2', 3: 'P3' };
+const SOURCE_ICONS = { email: '📧', web_form: '🌐', live_chat: '💬' };
 
 // ─── Detekcja potencjalnych danych osobowych / poufnych ───────────────────────
 const SENSITIVE_PATTERNS = [
@@ -179,121 +182,9 @@ function AutorTokenPanel({ ticket, onRefresh }) {
   );
 }
 
-function matchLdapLabel(ticket, labelCfg) {
-  let extra = {};
-  try { extra = ticket.ldap_data ? JSON.parse(ticket.ldap_data) : {}; } catch {}
-  const val = labelCfg.condition_field === 'ldap_ou'
-    ? ticket.ldap_ou
-    : extra[labelCfg.condition_field];
-  return val === labelCfg.condition_value;
-}
-
-function buildLdapLink(template, extra) {
-  if (!template) return '';
-  return template.replace(/\{(\w+)\}/g, (_, key) => extra[key] ?? '');
-}
-
-function LdapPanel({ ticket, onRefresh, ldapCardConfig }) {
-  const { t } = useTranslation();
-  const [refreshing, setRefreshing] = useState(false);
-
-  const refresh = async () => {
-    setRefreshing(true);
-    try { await api.post(`/tickets/${ticket.id}/ldap-refresh`); onRefresh(); }
-    catch { onRefresh(); }
-    finally { setRefreshing(false); }
-  };
-
-  const ou = ticket.ldap_ou;
-  if (ou === null || ou === undefined) return null;
-  if (ldapCardConfig && !ldapCardConfig.ldap_card_enabled) return null;
-
-  let extra = {};
-  try { extra = ticket.ldap_data ? JSON.parse(ticket.ldap_data) : {}; } catch {}
-
-  const notFound = ou === 'not_found';
-  const labels = ldapCardConfig?.ldap_labels || [];
-  const matched = labels.find(l => matchLdapLabel(ticket, l)) || null;
-
-  const icon = matched?.icon || '👤';
-  const labelText = matched?.label || (notFound ? t('ticket_view.ldap_not_found') : ou);
-  const linkUrl = matched?.link_template ? buildLdapLink(matched.link_template, extra) : '';
-  const linkText = matched?.link_label || t('ticket_view.ldap_open_link');
-
-  const ldapAttrs = t('ticket_view.ldap_attrs', { returnObjects: true }) || {};
-  const LDAP_ATTR_LABELS = {
-    cn: 'CN', uid: 'UID',
-    givenName: ldapAttrs.givenName, sn: ldapAttrs.sn,
-    displayName: ldapAttrs.displayName, mail: ldapAttrs.mail,
-    telephoneNumber: ldapAttrs.telephoneNumber, mobile: ldapAttrs.mobile,
-    l: ldapAttrs.l, description: ldapAttrs.description,
-    department: ldapAttrs.department, title: ldapAttrs.title,
-    employeeType: ldapAttrs.employeeType, eduPersonAffiliation: ldapAttrs.eduPersonAffiliation,
-    studid: ldapAttrs.studid, osobaid: ldapAttrs.osobaid, prow_id: ldapAttrs.prow_id,
-  };
-
-  const rows = Object.entries(LDAP_ATTR_LABELS)
-    .map(([key, label]) => ({ key, label, val: extra[key] }))
-    .filter(r => r.val);
-
-  const cardColor = matched
-    ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800'
-    : notFound
-      ? 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'
-      : 'bg-slate-50 border-slate-200 dark:bg-slate-800/50 dark:border-slate-700';
-
-  const badgeColor = matched
-    ? 'bg-blue-100 text-blue-700 dark:bg-blue-800/50 dark:text-blue-300'
-    : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
-
-  return (
-    <div className={`mb-4 rounded-lg border text-sm ${cardColor}`}>
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-inherit">
-        <span className="text-xl flex-shrink-0">{icon}</span>
-        <div className="flex-1 flex items-center gap-2 flex-wrap">
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeColor}`}>{labelText}</span>
-          {ticket.ldap_name && (
-            <span className="font-semibold text-gray-800 dark:text-gray-100">{ticket.ldap_name}</span>
-          )}
-          {ticket.ldap_num && (() => {
-            let albumNum = null;
-            try { albumNum = ticket.ldap_data ? JSON.parse(ticket.ldap_data).uid : null; } catch {}
-            const display = albumNum || ticket.ldap_num;
-            const label = albumNum ? 'Numer albumu:' : 'ID:';
-            return (
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                {label} <span className="font-mono font-medium text-gray-700 dark:text-gray-200">{display}</span>
-              </span>
-            );
-          })()}
-          {linkUrl && (
-            <a href={linkUrl} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
-              {linkText}
-            </a>
-          )}
-        </div>
-        <button onClick={refresh} disabled={refreshing} title={t('ticket_view.ldap_refresh')}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 disabled:opacity-40 text-base leading-none flex-shrink-0">
-          {refreshing ? '⟳' : '↻'}
-        </button>
-      </div>
-      {!notFound && rows.length > 0 && (
-        <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1.5 px-4 py-3 text-xs">
-          {rows.map(({ key, label, val }) => (
-            <div key={key}>
-              <dt className="text-gray-400 dark:text-gray-500">{label}</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-200 break-words">{val}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </div>
-  );
-}
-
 function OdpowiedzModal({ ticket, onClose, onSuccess }) {
   const { t } = useTranslation();
+  const isChat = ticket.zrodlo === 'live_chat';
   const [to, setTo] = useState(ticket.message_from || '');
   const [cc, setCc] = useState(ticket.message_cc || '');
   const [tresc, setTresc] = useState('');
@@ -322,11 +213,11 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
   const removeFile = (idx) => setFiles(prev => prev.filter((_, i) => i !== idx));
 
   const send = async () => {
-    if (!to || !tresc) return toast.error(t('ticket_view.reply_error_fields'));
+    if ((!isChat && !to) || !tresc) return toast.error(t('ticket_view.reply_error_fields'));
     setSending(true);
     try {
       const formData = new FormData();
-      formData.append('to', to);
+      formData.append('to', isChat ? '' : to);
       formData.append('cc', cc);
       formData.append('tresc', tresc);
       formData.append('html', `<p>${tresc.replace(/\n/g, '<br/>')}</p>`);
@@ -376,14 +267,18 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">×</button>
         </div>
         <div className="p-4 space-y-3">
-          <div>
-            <label className="label">{t('ticket_view.reply_to')}</label>
-            <input value={to} onChange={e => setTo(e.target.value)} className="input" />
-          </div>
-          <div>
-            <label className="label">CC</label>
-            <input value={cc} onChange={e => setCc(e.target.value)} className="input" placeholder={t('common.optional', 'opcjonalnie')} />
-          </div>
+          {!isChat && (
+            <>
+              <div>
+                <label className="label">{t('ticket_view.reply_to')}</label>
+                <input value={to} onChange={e => setTo(e.target.value)} className="input" />
+              </div>
+              <div>
+                <label className="label">CC</label>
+                <input value={cc} onChange={e => setCc(e.target.value)} className="input" placeholder={t('common.optional', 'opcjonalnie')} />
+              </div>
+            </>
+          )}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="label mb-0">{t('ticket_view.reply_content')}</label>
@@ -420,26 +315,28 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
             />
             {tresc && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('ticket_view.reply_ai_disclaimer')}</p>}
           </div>
-          <div>
-            <label className="label">{t('ticket_view.reply_attachments')}</label>
-            <label className="flex items-center gap-2 cursor-pointer border border-dashed border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2.5 hover:border-blue-400 transition-colors text-sm text-gray-600 dark:text-gray-400">
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-              </svg>
-              <span>{t('ticket_view.reply_add_files')}</span>
-              <input type="file" multiple className="hidden" onChange={e => addFiles(e.target.files)} />
-            </label>
-            {files.length > 0 && (
-              <ul className="mt-2 space-y-1">
-                {files.map((f, idx) => (
-                  <li key={idx} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-800 rounded px-3 py-1.5">
-                    <span className="truncate max-w-[380px]">{f.name} <span className="text-gray-400">({(f.size / 1024).toFixed(0)} KB)</span></span>
-                    <button onClick={() => removeFile(idx)} className="ml-2 text-red-400 hover:text-red-600 font-bold leading-none flex-shrink-0">×</button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          {!isChat && (
+            <div>
+              <label className="label">{t('ticket_view.reply_attachments')}</label>
+              <label className="flex items-center gap-2 cursor-pointer border border-dashed border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2.5 hover:border-blue-400 transition-colors text-sm text-gray-600 dark:text-gray-400">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                <span>{t('ticket_view.reply_add_files')}</span>
+                <input type="file" multiple className="hidden" onChange={e => addFiles(e.target.files)} />
+              </label>
+              {files.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {files.map((f, idx) => (
+                    <li key={idx} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-800 rounded px-3 py-1.5">
+                      <span className="truncate max-w-[380px]">{f.name} <span className="text-gray-400">({(f.size / 1024).toFixed(0)} KB)</span></span>
+                      <button onClick={() => removeFile(idx)} className="ml-2 text-red-400 hover:text-red-600 font-bold leading-none flex-shrink-0">×</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center justify-between px-4 py-3 border-t">
           <div className="flex items-center gap-3 flex-wrap">
@@ -470,97 +367,6 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
               {sending ? t('ticket_view.reply_sending') : zamknij ? t('ticket_view.reply_send_close') : t('ticket_view.reply_send')}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PrzydielModal({ ticketId, onClose, onSuccess }) {
-  const { t } = useTranslation();
-  const [tab, setTab] = useState('worker');
-  const [userId, setUserId] = useState('');
-  const [zespolId, setZespolId] = useState('');
-  const { data: users } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => api.get('/users').then(r => r.data.data),
-  });
-  const { data: zespoly } = useQuery({
-    queryKey: ['zespoly'],
-    queryFn: () => api.get('/zespoly').then(r => r.data.data),
-  });
-
-  const assign = async () => {
-    if (tab === 'worker') {
-      if (!userId) return toast.error(t('ticket_view.assign_error'));
-      try {
-        await api.post(`/tickets/${ticketId}/przydziel`, { user_id: userId });
-        toast.success(t('ticket_view.assign'));
-        onSuccess();
-        onClose();
-      } catch (err) {
-        toast.error(err.response?.data?.error || t('common.error'));
-      }
-    } else {
-      if (!zespolId) return toast.error(t('ticket_view.assign_team_error'));
-      try {
-        await api.post(`/tickets/${ticketId}/przydziel-zespol`, { zespol_id: zespolId });
-        toast.success(t('ticket_view.toast_team_assigned'));
-        onSuccess();
-        onClose();
-      } catch (err) {
-        toast.error(err.response?.data?.error || t('common.error'));
-      }
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm border dark:border-gray-800">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h3 className="font-semibold">{t('ticket_view.assign_title')}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">×</button>
-        </div>
-        <div className="flex border-b dark:border-gray-800">
-          <button
-            onClick={() => setTab('worker')}
-            className={`flex-1 px-3 py-2 text-sm ${tab === 'worker' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-gray-500'}`}
-          >
-            {t('ticket_view.assign_tab_worker')}
-          </button>
-          <button
-            onClick={() => setTab('team')}
-            className={`flex-1 px-3 py-2 text-sm ${tab === 'team' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-gray-500'}`}
-          >
-            {t('ticket_view.assign_tab_team')}
-          </button>
-        </div>
-        <div className="p-4">
-          {tab === 'worker' ? (
-            <>
-              <label className="label">{t('ticket_view.assign_worker')}</label>
-              <select value={userId} onChange={e => setUserId(e.target.value)} className="input">
-                <option value="">{t('ticket_view.assign_choose')}</option>
-                {users?.filter(u => ['admin', 'pracownik'].includes(u.rola)).map(u => (
-                  <option key={u.id} value={u.id}>{u.imie} {u.nazwisko} ({u.email})</option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <>
-              <label className="label">{t('ticket_view.assign_team_label')}</label>
-              <select value={zespolId} onChange={e => setZespolId(e.target.value)} className="input">
-                <option value="">{t('ticket_view.assign_team_choose')}</option>
-                {zespoly?.map(z => (
-                  <option key={z.id} value={z.id}>{z.nazwa}</option>
-                ))}
-              </select>
-            </>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 px-4 py-3 border-t">
-          <button onClick={onClose} className="btn-secondary">{t('common.cancel')}</button>
-          <button onClick={assign} className="btn-primary">{t('ticket_view.assign')}</button>
         </div>
       </div>
     </div>
@@ -944,6 +750,18 @@ export default function TicketView() {
         </div>
       </div>
 
+      {ticket.zrodlo === 'live_chat' && (
+        <div className="mb-4 flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg px-4 py-3 text-sm">
+          <span>💬</span>
+          <span className="text-blue-800 dark:text-blue-300">
+            {t('ticket_view.chat_view_hint')}{' '}
+            <Link to={`/czaty/${ticket.id}`} className="font-semibold underline hover:no-underline">
+              {t('chat_view.open_chat_view')} →
+            </Link>
+          </span>
+        </div>
+      )}
+
       {ticket.merged_into_id && (
         <div className="mb-4 flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg px-4 py-3 text-sm">
           <span>🔗</span>
@@ -1012,6 +830,9 @@ export default function TicketView() {
             </div>
           </div>
           <span className="text-sm text-gray-400 dark:text-gray-500">#{ticket.numer}</span>
+          {ticket.zrodlo && SOURCE_ICONS[ticket.zrodlo] && (
+            <span className="text-sm" title={t(`ticket_view.source_${ticket.zrodlo}`)}>{SOURCE_ICONS[ticket.zrodlo]}</span>
+          )}
         </div>
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
@@ -1220,6 +1041,20 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
       border: 'border-gray-200 dark:border-gray-700',
       badge: null,
     },
+    chat: {
+      icon: '💬',
+      label: null,
+      headerBg: 'bg-gray-50 dark:bg-gray-800',
+      border: 'border-gray-200 dark:border-gray-700',
+      badge: null,
+    },
+    system: {
+      icon: 'ℹ️',
+      label: t('ticket_view.typ_system'),
+      headerBg: 'bg-gray-50 dark:bg-gray-800',
+      border: 'border-gray-200 dark:border-gray-700',
+      badge: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+    },
     bounce: {
       icon: '⚠️',
       label: t('ticket_view.typ_bounce'),
@@ -1280,7 +1115,7 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
             </span>
           )}
           <span className={`truncate ${!przeczytane ? 'font-bold text-gray-900 dark:text-gray-100' : 'font-medium'}`}>
-            {k.message_from || `${k.imie} ${k.nazwisko}`}
+            {k.message_from || (k.imie ? `${k.imie} ${k.nazwisko}` : t('common.unassigned'))}
           </span>
           {k.message_to && (
             <span className="text-gray-500 dark:text-gray-400 truncate">→ {k.message_to}</span>

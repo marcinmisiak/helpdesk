@@ -371,8 +371,8 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
     const numer = Math.random().toString().slice(2, 8);
     const [result] = await pool.query(
       `INSERT INTO ticket
-        (numer, message_from, message_to, message_subject, tresc, html, message_cc, status, data_utworzenia, odlozony, podswietl, message_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?)`,
+        (numer, message_from, message_to, message_subject, tresc, html, message_cc, status, data_utworzenia, odlozony, podswietl, message_id, zrodlo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, 'email')`,
       [numer, from, to, subject, saveText, saveHtml || null, '', now, messageId.replace(/[<>]/g, '')]
     );
     const cidMapT = await saveEmailAttachments(attachments, 1, result.insertId);

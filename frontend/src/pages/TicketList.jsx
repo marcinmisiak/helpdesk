@@ -12,6 +12,7 @@ import AITagBadge from '../components/AITagBadge';
 
 const STATUS_COLORS = { 1: 'badge-blue', 2: 'badge-green', 3: 'badge-gray' };
 const PRIORITY_LABELS = { 1: 'P1', 2: 'P2', 3: 'P3' };
+const SOURCE_ICONS = { email: '📧', web_form: '🌐', live_chat: '💬' };
 
 function dateToTs(str) {
   if (!str) return undefined;
@@ -524,7 +525,10 @@ export default function TicketList({ title, queryParams = {} }) {
                         />
                       </td>
                     )}
-                    <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                    <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {ticket.zrodlo && SOURCE_ICONS[ticket.zrodlo] && (
+                        <span className="mr-1" title={t(`ticket_list.source_${ticket.zrodlo}`)}>{SOURCE_ICONS[ticket.zrodlo]}</span>
+                      )}
                       #{ticket.numer}
                     </td>
                     <td className="px-3 py-2 text-gray-700 dark:text-gray-200 max-w-[160px] truncate">
@@ -533,7 +537,7 @@ export default function TicketList({ title, queryParams = {} }) {
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Link
-                          to={`/tickets/${ticket.id}`}
+                          to={ticket.zrodlo === 'live_chat' ? `/czaty/${ticket.id}` : `/tickets/${ticket.id}`}
                           className={`hover:underline dark:text-blue-300 ${
                             ticket.podswietl
                               ? 'text-orange-700 dark:text-orange-300 font-semibold'

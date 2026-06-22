@@ -36,7 +36,7 @@ router.use(authenticate, requireWorker);
 // GET /api/tickets - lista ticketów
 router.get('/', async (req, res) => {
   try {
-    const { status, odlozone, moje, page = 1, limit = 20, q, priority, przypisany, data_od, data_do } = req.query;
+    const { status, odlozone, moje, page = 1, limit = 20, q, priority, przypisany, data_od, data_do, zrodlo } = req.query;
     const offset = (page - 1) * limit;
     const params = [];
     let where = "(t.ai_tag != 'spam' OR t.ai_tag IS NULL)";
@@ -63,6 +63,11 @@ router.get('/', async (req, res) => {
     if (priority) {
       where += ' AND t.priority = ?';
       params.push(parseInt(priority));
+    }
+
+    if (zrodlo) {
+      where += ' AND t.zrodlo = ?';
+      params.push(zrodlo);
     }
 
     if (przypisany) {
@@ -920,10 +925,11 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
     const oldStatus = ticket[0].status;
 
     const [kResult] = await pool.query(
-      `INSERT INTO korespondencja (ticket_id, data, created_by, updated_by, created_at, updated_at, tresc, html, message_to, message_cc, message_subject, message_from, przeczytane)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      `INSERT INTO korespondencja (ticket_id, data, created_by, updated_by, created_at, updated_at, tresc, html, message_to, message_cc, message_subject, message_from, typ, przeczytane)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [req.params.id, now, req.user.id, req.user.id, now, now, tresc, html,
-       to, cc || '', ticket[0].message_subject, req.user.email]
+       to, cc || '', ticket[0].message_subject, req.user.email,
+       ticket[0].zrodlo === 'live_chat' ? 'chat' : 'reply']
     );
 
     // upewnij się że przypisany
@@ -971,8 +977,10 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
       }
     }
 
-    // wyślij email
+    // wyślij email — pomijamy dla ticketów z czatu (odwiedzający nie ma adresu e-mail,
+    // odpowiedź trafia do niego przez polling widgetu, treść już zapisana w korespondencja)
     let mailError = null;
+    if (ticket[0].zrodlo !== 'live_chat') {
     try {
       const rawSubject = ticket[0].message_subject || '(brak tematu)';
       const numerTag = `[#${ticket[0].numer}]`;
@@ -1009,6 +1017,7 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
       console.error(`[Mail] BŁĄD wysyłki do ${to}:`, mailErr.message);
       // Zapisz błąd trwale przy wiadomości — widoczny w wątku korespondencji
       await pool.query('UPDATE korespondencja SET mail_error = ? WHERE id = ?', [mailErr.message, kResult.insertId]).catch(() => {});
+    }
     }
 
     // push do przypisanych (z wyłączeniem autora odpowiedzi)

@@ -9,6 +9,10 @@ const { start: startReminderScheduler } = require('./utils/reminderScheduler');
 
 const app = express();
 
+// Apache (reverse proxy) działa na tym samym hoście i dodaje X-Forwarded-For —
+// bez tego express-rate-limit nie może poprawnie rozpoznać adresu IP klienta.
+app.set('trust proxy', 'loopback');
+
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
@@ -37,6 +41,8 @@ app.use('/api/public', require('./routes/public'));
 app.use('/api/kategorie', require('./routes/kategorie'));
 app.use('/api/szablony', require('./routes/szablony'));
 app.use('/api/zespoly', require('./routes/zespoly'));
+app.use('/api/kanaly-czatu', require('./routes/kanaly_czatu'));
+app.use('/api/chat', require('./routes/chat'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

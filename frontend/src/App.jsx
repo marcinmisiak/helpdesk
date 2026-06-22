@@ -24,6 +24,10 @@ import Ustawienia from './pages/Ustawienia';
 import Spam from './pages/Spam';
 import Pomoc from './pages/Pomoc';
 import CsatSurvey from './pages/CsatSurvey';
+import ChatWidget from './pages/ChatWidget';
+import KanalyCzatu from './pages/KanalyCzatu';
+import Czaty from './pages/Czaty';
+import ChatTicketView from './pages/ChatTicketView';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10000 } },
@@ -41,6 +45,7 @@ function AppRoutes() {
       <Route path="/zgloszenie" element={<PublicForm />} />
       <Route path="/status/:token" element={<PublicTicketView />} />
       <Route path="/ocena/:token" element={<CsatSurvey />} />
+      <Route path="/chat/:channelKey" element={<ChatWidget />} />
 
       <Route path="/" element={
         <ProtectedRoute>
@@ -66,6 +71,16 @@ function AppRoutes() {
       <Route path="/moje" element={
         <ProtectedRoute>
           <Layout><MojeTickety /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/czaty" element={
+        <ProtectedRoute>
+          <Layout><Czaty /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/czaty/:id" element={
+        <ProtectedRoute>
+          <Layout><ChatTicketView /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/odlozone" element={
@@ -96,6 +111,11 @@ function AppRoutes() {
       <Route path="/zespoly" element={
         <ProtectedRoute adminOnly>
           <Layout><Zespoly /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/kanaly-czatu" element={
+        <ProtectedRoute adminOnly>
+          <Layout><KanalyCzatu /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/ustawienia" element={
