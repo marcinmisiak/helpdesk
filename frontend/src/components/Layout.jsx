@@ -180,10 +180,10 @@ export default function Layout({ children }) {
     { to: '/czaty', label: t('nav.chats'), icon: '💬', badge: counts?.czaty },
     { to: '/odlozone', label: t('nav.deferred'), icon: '⏸️', badge: counts?.odlozone },
     { to: '/kalendarz', label: t('nav.calendar'), icon: '📅' },
+    { to: '/zespoly', label: t('nav.teams'), icon: '👨‍👩‍👧' },
     ...(isAdmin ? [
       { to: '/statystyki', label: t('nav.statistics'), icon: '📊' },
       { to: '/uzytkownicy', label: t('nav.users'), icon: '👥' },
-      { to: '/zespoly', label: t('nav.teams'), icon: '👨‍👩‍👧' },
       { to: '/kanaly-czatu', label: t('nav.chat_channels'), icon: '🔌' },
       { to: '/szablony', label: t('nav.templates'), icon: '📝' },
       { to: '/ustawienia', label: t('nav.settings'), icon: '⚙️' },

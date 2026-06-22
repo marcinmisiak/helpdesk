@@ -324,7 +324,11 @@
     "deleted": "Zespół usunięty",
     "error_save": "Błąd zapisu",
     "error_no_name": "Podaj nazwę zespołu",
-    "confirm_delete": "Usunąć zespół \"{{name}}\"?"
+    "confirm_delete": "Usunąć zespół \"{{name}}\"?",
+    "join": "Dołącz",
+    "leave": "Opuść",
+    "joined": "Dołączono do zespołu",
+    "left": "Opuszczono zespół"
   },
   "chat_channels": {
     "title": "Kanały czatu",

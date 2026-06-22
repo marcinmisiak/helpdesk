@@ -324,7 +324,11 @@
     "deleted": "Team deleted",
     "error_save": "Save error",
     "error_no_name": "Please enter a team name",
-    "confirm_delete": "Delete team \"{{name}}\"?"
+    "confirm_delete": "Delete team \"{{name}}\"?",
+    "join": "Join",
+    "leave": "Leave",
+    "joined": "Joined team",
+    "left": "Left team"
   },
   "chat_channels": {
     "title": "Chat Channels",

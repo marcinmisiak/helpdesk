@@ -109,7 +109,7 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       <Route path="/zespoly" element={
-        <ProtectedRoute adminOnly>
+        <ProtectedRoute>
           <Layout><Zespoly /></Layout>
         </ProtectedRoute>
       } />

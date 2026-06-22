@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireWorker } = require('../middleware/auth');
 
 router.use(authenticate);
 
@@ -70,6 +70,33 @@ router.put('/:id', requireAdmin, async (req, res) => {
         await pool.query('INSERT INTO zespol_user (zespol_id, user_id, created_at) VALUES ?', [memberValues]);
       }
     }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/zespoly/:id/join — pracownik/admin samodzielnie dołącza do zespołu (bez udziału admina)
+router.post('/:id/join', requireWorker, async (req, res) => {
+  try {
+    const [teams] = await pool.query('SELECT id FROM zespol WHERE id = ?', [req.params.id]);
+    if (!teams.length) return res.status(404).json({ error: 'Zespół nie istnieje' });
+
+    const now = Math.floor(Date.now() / 1000);
+    await pool.query(
+      'INSERT INTO zespol_user (zespol_id, user_id, created_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE zespol_id = zespol_id',
+      [req.params.id, req.user.id, now]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/zespoly/:id/leave — pracownik/admin samodzielnie opuszcza zespół
+router.post('/:id/leave', requireWorker, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM zespol_user WHERE zespol_id = ? AND user_id = ?', [req.params.id, req.user.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

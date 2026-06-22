@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 function TeamModal({ team, users, onClose, onSuccess }) {
   const { t } = useTranslation();
@@ -83,6 +84,7 @@ function TeamModal({ team, users, onClose, onSuccess }) {
 
 export default function Zespoly() {
   const { t } = useTranslation();
+  const { user, isAdmin, isWorker } = useAuth();
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState('');
   const qc = useQueryClient();
@@ -116,11 +118,29 @@ export default function Zespoly() {
     }
   };
 
+  const isMember = (team) =>
+    (team.czlonkowie_ids || '').split(',').map(Number).includes(user?.id);
+
+  const toggleMembership = async (team) => {
+    try {
+      if (isMember(team)) {
+        await api.post(`/zespoly/${team.id}/leave`);
+        toast.success(t('teams.left'));
+      } else {
+        await api.post(`/zespoly/${team.id}/join`);
+        toast.success(t('teams.joined'));
+      }
+      qc.invalidateQueries(['zespoly']);
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('teams.error_save'));
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">{t('teams.title')}</h2>
-        <button onClick={() => setModal('new')} className="btn-primary">{t('teams.add')}</button>
+        {isAdmin && <button onClick={() => setModal('new')} className="btn-primary">{t('teams.add')}</button>}
       </div>
       <div className="mb-3">
         <input
@@ -151,8 +171,20 @@ export default function Zespoly() {
                   <td className="px-3 py-2 font-medium">{z.nazwa}</td>
                   <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{z.czlonkowie || t('teams.no_members')}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <button onClick={() => setModal(z)} className="btn-secondary btn-sm mr-2">{t('teams.edit')}</button>
-                    <button onClick={() => remove(z)} className="btn-danger btn-sm">{t('teams.delete')}</button>
+                    {isWorker && (
+                      <button
+                        onClick={() => toggleMembership(z)}
+                        className={`btn-sm mr-2 ${isMember(z) ? 'btn-secondary' : 'btn-primary'}`}
+                      >
+                        {isMember(z) ? t('teams.leave') : t('teams.join')}
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <>
+                        <button onClick={() => setModal(z)} className="btn-secondary btn-sm mr-2">{t('teams.edit')}</button>
+                        <button onClick={() => remove(z)} className="btn-danger btn-sm">{t('teams.delete')}</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
