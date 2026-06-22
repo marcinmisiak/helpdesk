@@ -233,6 +233,50 @@ async function getSettings() {
   return s;
 }
 
+// ─── Dopasowanie po nadawcy + temacie (fallback gdy nagłówki i numer w temacie nie pomogą) ──
+
+function normalizeSubjectForMatch(s) {
+  let str = (s || '').toLowerCase();
+  str = str.replace(/^(?:\s*(re|fwd|fw|odp)\s*:\s*)+/i, '');
+  str = str.replace(/\[[^\]]*\]/g, ' ');
+  str = str.replace(/[‐-―]/g, ' ');
+  str = str.replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return str;
+}
+
+function extractEmailAddress(fromText) {
+  const m = (fromText || '').match(/<([^>]+)>/);
+  return (m ? m[1] : (fromText || '')).trim().toLowerCase();
+}
+
+// Gdy odpowiedź nie ma dopasowania przez Message-ID ani numer w temacie (np. mail
+// systemowy bez śledzonego Message-ID i bez numeru w temacie), spróbuj znaleźć
+// zgłoszenie tego samego nadawcy, którego temat zawiera się w temacie odpowiedzi.
+async function findTicketBySenderAndSubject(from, subject) {
+  const email = extractEmailAddress(from);
+  if (!email || !email.includes('@')) return null;
+
+  const normIncoming = normalizeSubjectForMatch(subject);
+  if (!normIncoming) return null;
+
+  const cutoff = Math.floor(Date.now() / 1000) - 90 * 24 * 3600;
+  const [candidates] = await pool.query(
+    `SELECT id, message_subject FROM ticket
+     WHERE message_from LIKE ? AND data_utworzenia >= ?
+     ORDER BY data_utworzenia DESC
+     LIMIT 25`,
+    [`%${email}%`, cutoff]
+  );
+
+  for (const c of candidates) {
+    const normTicket = normalizeSubjectForMatch(c.message_subject);
+    if (normTicket.length >= 4 && (normIncoming.includes(normTicket) || normTicket.includes(normIncoming))) {
+      return c.id;
+    }
+  }
+  return null;
+}
+
 // ─── Wspólna logika przetwarzania pojedynczej wiadomości ─────────────────────
 async function processEmailItem({ from, to, subject, text, html, messageId, inReplyTo, references, attachments }, settings) {
   let ticketId = null;
@@ -265,6 +309,13 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
     if (nrMatch) {
       const [[row]] = await pool.query('SELECT id FROM ticket WHERE numer = ?', [nrMatch[1]]);
       if (row) ticketId = row.id;
+    }
+  }
+
+  if (!ticketId) {
+    ticketId = await findTicketBySenderAndSubject(from, subject);
+    if (ticketId) {
+      console.log(`[IMAP] Dopasowano przez nadawcę+temat (fallback) → ticket #${ticketId}`);
     }
   }
 

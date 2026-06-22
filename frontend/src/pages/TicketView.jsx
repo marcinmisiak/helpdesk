@@ -255,11 +255,17 @@ function LdapPanel({ ticket, onRefresh, ldapCardConfig }) {
           {ticket.ldap_name && (
             <span className="font-semibold text-gray-800 dark:text-gray-100">{ticket.ldap_name}</span>
           )}
-          {ticket.ldap_num && (
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              nr <span className="font-mono font-medium text-gray-700 dark:text-gray-200">{ticket.ldap_num}</span>
-            </span>
-          )}
+          {ticket.ldap_num && (() => {
+            let albumNum = null;
+            try { albumNum = ticket.ldap_data ? JSON.parse(ticket.ldap_data).uid : null; } catch {}
+            const display = albumNum || ticket.ldap_num;
+            const label = albumNum ? 'Numer albumu:' : 'ID:';
+            return (
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {label} <span className="font-mono font-medium text-gray-700 dark:text-gray-200">{display}</span>
+              </span>
+            );
+          })()}
           {linkUrl && (
             <a href={linkUrl} target="_blank" rel="noopener noreferrer"
               className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
@@ -559,6 +565,59 @@ function PrzekazModal({ ticket, onClose, onSuccess }) {
   );
 }
 
+function ScalModal({ ticket, onClose, onSuccess }) {
+  const { t } = useTranslation();
+  const [targetNumer, setTargetNumer] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const send = async () => {
+    if (!targetNumer.trim()) return toast.error(t('ticket_view.merge_error'));
+    setSending(true);
+    try {
+      const { data } = await api.post(`/tickets/${ticket.id}/merge`, { targetNumer: targetNumer.trim() });
+      toast.success(t('ticket_view.toast_merged', { numer: data.targetNumer }));
+      onSuccess(data.targetId);
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('common.error'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm border dark:border-gray-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700">
+          <h3 className="font-semibold">{t('ticket_view.merge_title', { numer: ticket.numer })}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">×</button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="label">{t('ticket_view.merge_target_label')}</label>
+            <input
+              value={targetNumer}
+              onChange={e => setTargetNumer(e.target.value)}
+              className="input"
+              placeholder={t('ticket_view.merge_target_placeholder')}
+              autoFocus
+            />
+          </div>
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded p-3 text-xs text-amber-800 dark:text-amber-300">
+            {t('ticket_view.merge_info')}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t dark:border-gray-700">
+          <button onClick={onClose} className="btn-secondary">{t('common.cancel')}</button>
+          <button onClick={send} disabled={sending || !targetNumer.trim()} className="btn-primary">
+            {sending ? t('ticket_view.merge_sending') : t('ticket_view.merge_btn')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OdlozModal({ ticketId, onClose, onSuccess }) {
   const { t } = useTranslation();
   const [date, setDate] = useState('');
@@ -739,6 +798,11 @@ export default function TicketView() {
           <button onClick={() => setModal('przydziel')} className="btn-secondary">
             {t('ticket_view.assign')}
           </button>
+          {!ticket.merged_into_id && (
+            <button onClick={() => setModal('scal')} className="btn-secondary">
+              {t('ticket_view.merge_btn')}
+            </button>
+          )}
           {ticket.odlozony ? (
             <button onClick={() => przywroc.mutate()} className="btn-warning">
               {t('ticket_view.restore')}
@@ -797,6 +861,35 @@ export default function TicketView() {
           )}
         </div>
       </div>
+
+      {ticket.merged_into_id && (
+        <div className="mb-4 flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg px-4 py-3 text-sm">
+          <span>🔗</span>
+          <span className="text-blue-800 dark:text-blue-300">
+            {t('ticket_view.merged_into_banner')}{' '}
+            <Link to={`/tickets/${ticket.merged_into_id}`} className="font-semibold underline hover:no-underline">
+              #{ticket.merged_into_numer || ticket.merged_into_id}
+            </Link>
+          </span>
+        </div>
+      )}
+
+      {ticket.merged_from?.length > 0 && (
+        <div className="mb-4 flex items-start gap-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3 text-sm">
+          <span>🔗</span>
+          <div className="text-gray-700 dark:text-gray-300">
+            <span>{t('ticket_view.merged_from_banner')}</span>{' '}
+            {ticket.merged_from.map((m, idx) => (
+              <span key={m.id}>
+                {idx > 0 && ', '}
+                <Link to={`/tickets/${m.id}`} className="font-semibold text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                  #{m.numer}
+                </Link>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Szczegóły ticketu */}
       <div className="card mb-4">
@@ -979,6 +1072,13 @@ export default function TicketView() {
       {modal === 'przekaz' && (
         <PrzekazModal ticket={ticket} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries(['ticket', id]); }} />
       )}
+      {modal === 'scal' && (
+        <ScalModal
+          ticket={ticket}
+          onClose={() => setModal(null)}
+          onSuccess={(targetId) => { qc.invalidateQueries(['tickets']); navigate(`/tickets/${targetId}`); }}
+        />
+      )}
     </div>
   );
 }
@@ -1025,6 +1125,13 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
       headerBg: 'bg-red-50 dark:bg-red-900/20',
       border: 'border-red-300 dark:border-red-700',
       badge: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+    },
+    merged: {
+      icon: '🔗',
+      label: t('ticket_view.typ_merged'),
+      headerBg: 'bg-teal-50 dark:bg-teal-900/20',
+      border: 'border-teal-200 dark:border-teal-700',
+      badge: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300',
     },
   };
 

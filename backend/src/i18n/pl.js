@@ -7,7 +7,7 @@ module.exports = {
   subject_unassigned_plural: '[{appName}] {count} nieodebrane zgłoszenia — wymagają przypisania',
   subject_pending_single: '[{appName}] Przypomnienie: {count} zgłoszenie czeka na odpowiedź',
   subject_pending_plural: '[{appName}] Przypomnienie: {count} zgłoszeń czeka na odpowiedź',
-  subject_close_reminder_with_subject: '[{appName}] Czy Twoje zgłoszenie zostało rozwiązane? — {subject}',
+  subject_close_reminder_with_subject: '[{appName}] Czy Twoje zgłoszenie #{numer} zostało rozwiązane? — {subject}',
   subject_close_reminder: '[{appName}] Czy Twoje zgłoszenie #{numer} zostało rozwiązane?',
   subject_assigned: '[{appName}] Przypisano Cię do zgłoszenia #{numer}',
   subject_unassigned_from: '[{appName}] Usunięto Cię z przypisanych do zgłoszenia #{numer}',

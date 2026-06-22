@@ -217,6 +217,16 @@ router.get('/:id', async (req, res) => {
 
     // oznacz jako otwarty
     const ticket = rows[0];
+
+    if (ticket.merged_into_id) {
+      const [[mergedInto]] = await pool.query('SELECT numer FROM ticket WHERE id = ?', [ticket.merged_into_id]);
+      ticket.merged_into_numer = mergedInto?.numer || null;
+    }
+
+    const [mergedFromRows] = await pool.query(
+      'SELECT id, numer FROM ticket WHERE merged_into_id = ?', [ticket.id]
+    );
+    ticket.merged_from = mergedFromRows;
     if (!ticket.data_otwarcia) {
       await pool.query('UPDATE ticket SET data_otwarcia = ?, podswietl = 0 WHERE id = ?', [Math.floor(Date.now() / 1000), req.params.id]);
     } else {
@@ -383,6 +393,7 @@ router.delete('/:id/trwale', requireAdmin, async (req, res) => {
     await pool.query('DELETE FROM notatka WHERE ticket_id = ?', [req.params.id]).catch(() => {});
     await pool.query('DELETE FROM user_has_ticket WHERE ticket_id = ?', [req.params.id]);
     await pool.query('DELETE FROM alert WHERE ticket_id = ?', [req.params.id]).catch(() => {});
+    await pool.query('UPDATE ticket SET merged_into_id = NULL WHERE merged_into_id = ?', [req.params.id]).catch(() => {});
     await pool.query('DELETE FROM ticket WHERE id = ?', [req.params.id]);
 
     res.json({ success: true });
@@ -620,6 +631,77 @@ router.post('/:id/status', async (req, res) => {
       await pool.query('UPDATE ticket SET status=2, data_zamkniecia=NULL WHERE id=?', [req.params.id]);
     }
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/tickets/:id/merge — scala to zgłoszenie (duplikat) do innego zgłoszenia (docelowego)
+router.post('/:id/merge', async (req, res) => {
+  try {
+    const sourceId = parseInt(req.params.id);
+    const { targetNumer } = req.body;
+    if (!targetNumer) return res.status(400).json({ error: 'Podaj numer zgłoszenia docelowego' });
+
+    const [[target]] = await pool.query(
+      'SELECT id, numer, merged_into_id FROM ticket WHERE numer = ?', [String(targetNumer).trim()]
+    );
+    if (!target) return res.status(404).json({ error: 'Zgłoszenie docelowe nie znalezione' });
+    if (target.id === sourceId) return res.status(400).json({ error: 'Nie można scalić zgłoszenia z samym sobą' });
+    if (target.merged_into_id) {
+      return res.status(400).json({ error: `Zgłoszenie docelowe jest już scalone ze zgłoszeniem #${target.merged_into_id}` });
+    }
+
+    const [[source]] = await pool.query(
+      `SELECT id, numer, merged_into_id, message_from, message_subject, message_to, message_cc, tresc, html, data_utworzenia
+       FROM ticket WHERE id = ?`,
+      [sourceId]
+    );
+    if (!source) return res.status(404).json({ error: 'Zgłoszenie nie znalezione' });
+    if (source.merged_into_id) {
+      return res.status(400).json({ error: `To zgłoszenie jest już scalone ze zgłoszeniem #${source.merged_into_id}` });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+
+    // Przenieś dotychczasową korespondencję ze źródłowego ticketu do docelowego
+    await pool.query('UPDATE korespondencja SET ticket_id = ? WHERE ticket_id = ?', [target.id, sourceId]);
+
+    // Pierwsza wiadomość źródłowego ticketu staje się wpisem korespondencji w docelowym, by nie zgubić treści
+    const [kResult] = await pool.query(
+      `INSERT INTO korespondencja
+        (ticket_id, data, created_by, updated_by, created_at, updated_at,
+         tresc, html, message_to, message_cc, message_subject, message_from, typ)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'merged')`,
+      [target.id, source.data_utworzenia || now, req.user.id, req.user.id, now, now,
+       source.tresc, source.html, source.message_to, source.message_cc, source.message_subject, source.message_from]
+    );
+
+    // Załączniki źródłowego ticketu (tabela=1) przenieś jako załączniki nowego wpisu korespondencji
+    await pool.query('UPDATE plik SET tabela = 2, ticket_id = ? WHERE tabela = 1 AND ticket_id = ?', [kResult.insertId, sourceId]);
+
+    // Notatki wewnętrzne przenieś do docelowego ticketu
+    await pool.query('UPDATE notatka SET ticket_id = ? WHERE ticket_id = ?', [target.id, sourceId]).catch(() => {});
+
+    // Jeśli inne tickety były już scalone w źródłowy, przepnij je na docelowy (bez łańcuchów)
+    await pool.query('UPDATE ticket SET merged_into_id = ? WHERE merged_into_id = ?', [target.id, sourceId]);
+
+    // Oznacz źródłowy ticket jako scalony i zamknięty
+    await pool.query(
+      'UPDATE ticket SET merged_into_id = ?, status = 3, data_zamkniecia = ? WHERE id = ?',
+      [target.id, now, sourceId]
+    );
+
+    // Podświetl docelowy ticket i otwórz go ponownie, jeśli był zamknięty
+    await pool.query(
+      `UPDATE ticket SET podswietl = 1,
+         status = IF(status = 3, 1, status),
+         data_zamkniecia = IF(status = 3, NULL, data_zamkniecia)
+       WHERE id = ?`,
+      [target.id]
+    );
+
+    res.json({ success: true, targetId: target.id, targetNumer: target.numer });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

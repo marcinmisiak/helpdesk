@@ -403,6 +403,11 @@ export default function TicketList({ title, queryParams = {} }) {
                         {ticket.odlozony ? (
                           <span className="badge-yellow">{t('ticket_list.deferred_badge', { date: formatDate(ticket.odlozony_data) })}</span>
                         ) : null}
+                        {ticket.merged_into_id ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-700 dark:bg-teal-800/40 dark:text-teal-300 whitespace-nowrap">
+                            🔗 {t('ticket_list.merged_badge')}
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">

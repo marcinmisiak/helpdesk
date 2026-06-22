@@ -7,7 +7,7 @@ module.exports = {
   subject_unassigned_plural: '[{appName}] {count} unassigned tickets — require assignment',
   subject_pending_single: '[{appName}] Reminder: {count} ticket waiting for reply',
   subject_pending_plural: '[{appName}] Reminder: {count} tickets waiting for reply',
-  subject_close_reminder_with_subject: '[{appName}] Has your issue been resolved? — {subject}',
+  subject_close_reminder_with_subject: '[{appName}] Has your ticket #{numer} been resolved? — {subject}',
   subject_close_reminder: '[{appName}] Has your ticket #{numer} been resolved?',
   subject_assigned: '[{appName}] You have been assigned to ticket #{numer}',
   subject_unassigned_from: '[{appName}] You have been removed from ticket #{numer}',

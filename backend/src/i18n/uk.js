@@ -7,7 +7,7 @@ module.exports = {
   subject_unassigned_plural: '[{appName}] {count} заявок без відповідального — потребують призначення',
   subject_pending_single: '[{appName}] Нагадування: {count} заявка очікує відповіді',
   subject_pending_plural: '[{appName}] Нагадування: {count} заявок очікують відповіді',
-  subject_close_reminder_with_subject: '[{appName}] Ваше питання вирішено? — {subject}',
+  subject_close_reminder_with_subject: '[{appName}] Заявку #{numer} вирішено? — {subject}',
   subject_close_reminder: '[{appName}] Заявку #{numer} вирішено?',
   subject_assigned: '[{appName}] Вам призначено заявку #{numer}',
   subject_unassigned_from: '[{appName}] Вас видалено із заявки #{numer}',
