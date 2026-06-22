@@ -199,10 +199,10 @@ router.get('/ms-graph-stats', requireAdmin, async (req, res) => {
 // POST /api/ustawienia/messenger-test — test połączenia Facebook Graph API (Page Access Token)
 router.post('/messenger-test', requireAdmin, async (req, res) => {
   try {
-    const [[settings]] = await pool.query('SELECT messenger_page_access_token FROM ustawienia WHERE id = 1');
+    const [[settings]] = await pool.query('SELECT messenger_page_access_token, messenger_page_id FROM ustawienia WHERE id = 1');
     if (!settings?.messenger_page_access_token) return res.status(400).json({ error: 'Brak skonfigurowanego tokenu.' });
 
-    const profile = await messengerClient.testConnection(settings.messenger_page_access_token);
+    const profile = await messengerClient.testConnection(settings.messenger_page_access_token, settings.messenger_page_id);
     res.json({ message: `Połączono ze stroną: ${profile.name}` });
   } catch (err) {
     res.status(400).json({ error: err.message });

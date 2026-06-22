@@ -40,8 +40,11 @@ async function getUserProfile(psid, token) {
   }
 }
 
-async function testConnection(token) {
-  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/me?fields=name,id&access_token=${encodeURIComponent(token)}`);
+// Uwaga: zapytanie przez alias /me wymaga uprawnienia 'pages_read_engagement', którego
+// token z samym 'pages_messaging' nie ma — odpytujemy bezpośrednio po ID strony.
+async function testConnection(token, pageId) {
+  const target = pageId || 'me';
+  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${target}?fields=name,id&access_token=${encodeURIComponent(token)}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error?.message || 'Nieprawidłowy token.');
   return data;
