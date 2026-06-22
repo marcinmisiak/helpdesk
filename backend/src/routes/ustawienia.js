@@ -6,6 +6,8 @@ const multer = require('multer');
 const pool = require('../config/db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { testConnection } = require('../utils/ldap');
+const crypto = require('crypto');
+const messengerClient = require('../utils/messengerClient');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -72,12 +74,23 @@ router.get('/ldap-card-config', async (req, res) => {
 // GET /api/ustawienia
 router.get('/', requireAdmin, async (req, res) => {
   try {
-    const [[row]] = await pool.query('SELECT * FROM ustawienia WHERE id = 1');
+    let [[row]] = await pool.query('SELECT * FROM ustawienia WHERE id = 1');
     if (!row) return res.status(404).json({ error: 'Brak ustawień' });
+
+    // Wygeneruj token weryfikacyjny webhooka Messengera przy pierwszym wejściu —
+    // admin musi mieć gotową wartość do wklejenia w panelu Meta for Developers.
+    if (!row.messenger_verify_token) {
+      const verifyToken = crypto.randomBytes(24).toString('hex');
+      await pool.query('UPDATE ustawienia SET messenger_verify_token = ? WHERE id = 1', [verifyToken]);
+      row.messenger_verify_token = verifyToken;
+    }
+
     const safe = { ...row };
     delete safe.password;
     delete safe.imapPassword;
     delete safe.ms_graph_client_secret;
+    delete safe.messenger_page_access_token;
+    delete safe.messenger_app_secret;
     res.json({ ustawienia: safe });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -121,6 +134,9 @@ router.put('/', requireAdmin, async (req, res) => {
       'app_language',
       // Ankieta satysfakcji (CSAT)
       'csat_survey_enabled',
+      // Facebook Messenger
+      'messenger_enabled', 'messenger_page_id', 'messenger_page_access_token',
+      'messenger_app_secret', 'messenger_zespol_id',
     ];
     const updates = [];
     const values = [];
@@ -175,6 +191,19 @@ router.get('/ms-graph-stats', requireAdmin, async (req, res) => {
     const { getMailboxStats } = require('../utils/msGraphClient');
     const stats = await getMailboxStats(settings);
     res.json(stats);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/ustawienia/messenger-test — test połączenia Facebook Graph API (Page Access Token)
+router.post('/messenger-test', requireAdmin, async (req, res) => {
+  try {
+    const [[settings]] = await pool.query('SELECT messenger_page_access_token FROM ustawienia WHERE id = 1');
+    if (!settings?.messenger_page_access_token) return res.status(400).json({ error: 'Brak skonfigurowanego tokenu.' });
+
+    const profile = await messengerClient.testConnection(settings.messenger_page_access_token);
+    res.json({ message: `Połączono ze stroną: ${profile.name}` });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

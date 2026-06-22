@@ -722,6 +722,128 @@ function MsGraphPanel({ form, set, setCheck }) {
   );
 }
 
+// ─── Panel Facebook Messenger ─────────────────────────────────────────────────
+function MessengerPanel({ form, set, setCheck }) {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  const { data: zespoly } = useQuery({
+    queryKey: ['zespoly'],
+    queryFn: () => api.get('/zespoly').then((r) => r.data.data),
+  });
+
+  const webhookUrl = `${API_BASE}/api/messenger/webhook`;
+
+  const testMessenger = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data } = await api.post('/ustawienia/messenger-test');
+      setTestResult({ ok: true, msg: data.message });
+    } catch (err) {
+      setTestResult({ ok: false, msg: err.response?.data?.error || 'Błąd połączenia' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="card border-blue-200 dark:border-blue-800">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📘</span>
+          <h3 className="font-semibold">Facebook Messenger</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="messenger_enabled"
+            checked={!!form.messenger_enabled}
+            onChange={setCheck('messenger_enabled')}
+          />
+          <label htmlFor="messenger_enabled" className="text-sm font-medium">Włącz</label>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-500 mb-4">
+        Odbieranie i wysyłanie wiadomości przez Messenger Platform (Facebook Graph API).
+        Wymaga własnej aplikacji w Meta for Developers podłączonej do strony szkoły oraz przejścia
+        App Review dla uprawnienia <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">pages_messaging</code>.
+      </p>
+
+      <div className={`space-y-3 ${!form.messenger_enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div>
+          <label className="label">Page ID</label>
+          <input
+            value={form.messenger_page_id || ''}
+            onChange={set('messenger_page_id')}
+            className="input font-mono text-sm"
+            placeholder="np. 123456789012345"
+          />
+        </div>
+        <div>
+          <label className="label">Page Access Token</label>
+          <input
+            type="password"
+            value={form.messenger_page_access_token || ''}
+            onChange={set('messenger_page_access_token')}
+            className="input"
+            placeholder="(zostaw puste aby nie zmieniać)"
+          />
+        </div>
+        <div>
+          <label className="label">App Secret</label>
+          <input
+            type="password"
+            value={form.messenger_app_secret || ''}
+            onChange={set('messenger_app_secret')}
+            className="input"
+            placeholder="(zostaw puste aby nie zmieniać)"
+          />
+        </div>
+        <div>
+          <label className="label">Zespół powiadamiany o nowych wiadomościach</label>
+          <select
+            value={form.messenger_zespol_id || ''}
+            onChange={set('messenger_zespol_id')}
+            className="input"
+          >
+            <option value="">(brak — powiadamiaj wszystkich adminów)</option>
+            {zespoly?.map((z) => (
+              <option key={z.id} value={z.id}>{z.nazwa}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="pt-1 flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={testMessenger}
+            disabled={testing || !form.messenger_page_access_token}
+            className="btn-secondary btn-sm"
+          >
+            {testing ? 'Testowanie...' : 'Testuj połączenie'}
+          </button>
+          {testResult && (
+            <span className={`text-sm ${testResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {testResult.ok ? '✓' : '✕'} {testResult.msg}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-200">
+          <strong>Konfiguracja webhooka w Meta for Developers:</strong>
+          <ol className="mt-1 ml-4 list-decimal space-y-0.5">
+            <li>Callback URL: <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded break-all">{webhookUrl}</code></li>
+            <li>Verify Token: <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded break-all">{form.messenger_verify_token || '(zostanie wygenerowany po zapisaniu)'}</code></li>
+            <li>Subskrybuj pole webhooka <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">messages</code></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Panel czyszczenia skrzynki ───────────────────────────────────────────────
 function MailboxCleanupPanel({ form, set, setCheck }) {
   const [stats, setStats] = useState(null);
@@ -978,6 +1100,7 @@ const TABS = [
   { id: 'imap', label: 'IMAP' },
   { id: 'kategorie', label: 'Kategorie zgłoszeń' },
   { id: 'ldap', label: 'LDAP' },
+  { id: 'messenger', label: 'Facebook Messenger' },
   { id: 'inne', label: 'Inne' },
 ];
 
@@ -1005,7 +1128,7 @@ export default function Ustawienia() {
 
   if (isLoading) return <div className="text-center py-12 text-gray-500">Ładowanie...</div>;
 
-  const isFormTab = ['ogolne', 'smtp', 'imap', 'ldap', 'inne'].includes(activeTab);
+  const isFormTab = ['ogolne', 'smtp', 'imap', 'ldap', 'messenger', 'inne'].includes(activeTab);
 
   return (
     <div>
@@ -1311,6 +1434,12 @@ export default function Ustawienia() {
 
       {activeTab === 'ldap' && (
         <LdapPanel form={effectiveForm} set={set} setCheck={setCheck} setVal={setVal} />
+      )}
+
+      {activeTab === 'messenger' && (
+        <div className="space-y-4 max-w-lg">
+          <MessengerPanel form={effectiveForm} set={set} setCheck={setCheck} />
+        </div>
       )}
 
       {activeTab === 'inne' && (

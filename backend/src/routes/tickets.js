@@ -13,6 +13,7 @@ const { getSiteUrl } = require('../utils/siteUrl');
 const { normalizePriority, computeDeadlines, enrichTicketSla } = require('../utils/sla');
 const { classifyAndSave, generateReply } = require('../utils/groqClassifier');
 const { maybeSendCsatSurvey } = require('../utils/csat');
+const messengerClient = require('../utils/messengerClient');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 const uploadStorage = multer.diskStorage({
@@ -66,8 +67,9 @@ router.get('/', async (req, res) => {
     }
 
     if (zrodlo) {
-      where += ' AND t.zrodlo = ?';
-      params.push(zrodlo);
+      const zrodlaList = zrodlo.split(',').map((s) => s.trim()).filter(Boolean);
+      where += ` AND t.zrodlo IN (${zrodlaList.map(() => '?').join(',')})`;
+      params.push(...zrodlaList);
     }
 
     if (przypisany) {
@@ -929,7 +931,7 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [req.params.id, now, req.user.id, req.user.id, now, now, tresc, html,
        to, cc || '', ticket[0].message_subject, req.user.email,
-       ticket[0].zrodlo === 'live_chat' ? 'chat' : 'reply']
+       ticket[0].zrodlo === 'live_chat' ? 'chat' : (ticket[0].zrodlo === 'messenger' ? 'messenger' : 'reply')]
     );
 
     // upewnij się że przypisany
@@ -980,7 +982,17 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
     // wyślij email — pomijamy dla ticketów z czatu (odwiedzający nie ma adresu e-mail,
     // odpowiedź trafia do niego przez polling widgetu, treść już zapisana w korespondencja)
     let mailError = null;
-    if (ticket[0].zrodlo !== 'live_chat') {
+    if (ticket[0].zrodlo === 'messenger') {
+      try {
+        const withinWindow = ticket[0].messenger_last_user_message_at
+          && (now - ticket[0].messenger_last_user_message_at < 24 * 3600);
+        const sentId = await messengerClient.sendMessage(ticket[0].messenger_psid, tresc, withinWindow);
+        if (sentId) await pool.query('UPDATE korespondencja SET message_id = ? WHERE id = ?', [sentId, kResult.insertId]);
+      } catch (msgErr) {
+        mailError = msgErr.message;
+        await pool.query('UPDATE korespondencja SET mail_error = ? WHERE id = ?', [msgErr.message, kResult.insertId]).catch(() => {});
+      }
+    } else if (ticket[0].zrodlo !== 'live_chat') {
     try {
       const rawSubject = ticket[0].message_subject || '(brak tematu)';
       const numerTag = `[#${ticket[0].numer}]`;

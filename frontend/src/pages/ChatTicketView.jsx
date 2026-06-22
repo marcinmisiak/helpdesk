@@ -163,7 +163,7 @@ export default function ChatTicketView() {
   if (isLoading) return <div className="text-center py-12 text-gray-500 dark:text-gray-400">{t('common.loading')}</div>;
   if (error) return <div className="text-center py-12 text-red-500">{t('ticket_view.error_loading')}</div>;
 
-  if (ticket.zrodlo !== 'live_chat') {
+  if (!['live_chat', 'messenger'].includes(ticket.zrodlo)) {
     return (
       <div className="card text-center py-12">
         <p className="text-gray-600 dark:text-gray-300 mb-3">{t('chat_view.not_chat_ticket')}</p>

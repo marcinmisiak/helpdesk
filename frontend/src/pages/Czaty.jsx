@@ -3,5 +3,5 @@ import TicketList from './TicketList';
 
 export default function Czaty() {
   const { t } = useTranslation();
-  return <TicketList title={t('nav.chats')} queryParams={{ zrodlo: 'live_chat' }} />;
+  return <TicketList title={t('nav.chats')} queryParams={{ zrodlo: 'live_chat,messenger' }} />;
 }

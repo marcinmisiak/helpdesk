@@ -18,7 +18,9 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '10mb' }));
+// verify capture'uje surowe body (Buffer) do req.rawBody — potrzebne do weryfikacji
+// podpisu HMAC webhooków Facebooka (musi liczyć HMAC po bajtach, nie po sparsowanym JSON).
+app.use(express.json({ limit: '10mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Statyczne pliki z Yii2 (załączniki)
@@ -43,6 +45,7 @@ app.use('/api/szablony', require('./routes/szablony'));
 app.use('/api/zespoly', require('./routes/zespoly'));
 app.use('/api/kanaly-czatu', require('./routes/kanaly_czatu'));
 app.use('/api/chat', require('./routes/chat'));
+app.use('/api/messenger', require('./routes/messenger'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

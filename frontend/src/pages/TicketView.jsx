@@ -22,7 +22,7 @@ function wrapEmailHtml(html) {
 
 const STATUS_COLORS = { 1: 'badge-red', 2: 'badge-yellow', 3: 'badge-gray' };
 const PRIORITY_LABELS = { 1: 'P1', 2: 'P2', 3: 'P3' };
-const SOURCE_ICONS = { email: '📧', web_form: '🌐', live_chat: '💬' };
+const SOURCE_ICONS = { email: '📧', web_form: '🌐', live_chat: '💬', messenger: '📘' };
 
 // ─── Detekcja potencjalnych danych osobowych / poufnych ───────────────────────
 const SENSITIVE_PATTERNS = [
@@ -184,7 +184,7 @@ function AutorTokenPanel({ ticket, onRefresh }) {
 
 function OdpowiedzModal({ ticket, onClose, onSuccess }) {
   const { t } = useTranslation();
-  const isChat = ticket.zrodlo === 'live_chat';
+  const isChat = ['live_chat', 'messenger'].includes(ticket.zrodlo);
   const [to, setTo] = useState(ticket.message_from || '');
   const [cc, setCc] = useState(ticket.message_cc || '');
   const [tresc, setTresc] = useState('');
@@ -750,9 +750,9 @@ export default function TicketView() {
         </div>
       </div>
 
-      {ticket.zrodlo === 'live_chat' && (
+      {['live_chat', 'messenger'].includes(ticket.zrodlo) && (
         <div className="mb-4 flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg px-4 py-3 text-sm">
-          <span>💬</span>
+          <span>{ticket.zrodlo === 'messenger' ? '📘' : '💬'}</span>
           <span className="text-blue-800 dark:text-blue-300">
             {t('ticket_view.chat_view_hint')}{' '}
             <Link to={`/czaty/${ticket.id}`} className="font-semibold underline hover:no-underline">

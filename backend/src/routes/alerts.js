@@ -66,7 +66,7 @@ router.get('/count', async (req, res) => {
     );
     const [[czaty]] = await pool.query(
       `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
-       WHERE t.zrodlo = 'live_chat' AND t.status != 3
+       WHERE t.zrodlo IN ('live_chat', 'messenger') AND t.status != 3
          AND (EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id AND uht.user_id = ?)
               OR EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?))`,
       [req.user.id, req.user.id]
