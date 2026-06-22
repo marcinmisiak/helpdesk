@@ -13,6 +13,7 @@ const { normalizePriority, computeDeadlines } = require('../utils/sla');
 const { lookupEmail } = require('../utils/ldap');
 const { classifyAndSave, generatePublicReply } = require('../utils/groqClassifier');
 const { sendWeekendAutoReply } = require('../utils/weekendAutoReply');
+const { maybeSendCsatSurvey } = require('../utils/csat');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -474,6 +475,7 @@ router.post('/status/:token/zamknij', replyLimiter, async (req, res) => {
 
     const now = Math.floor(Date.now() / 1000);
     await pool.query('UPDATE ticket SET status=3, data_zamkniecia=? WHERE id=?', [now, ticket.id]);
+    maybeSendCsatSurvey(ticket.id).catch(() => {});
 
     // Powiadom przypisanych pracowników
     try {
@@ -499,6 +501,58 @@ router.post('/status/:token/zamknij', replyLimiter, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[public/status POST zamknij]', err.message);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+// GET /api/public/ocena/:token — dane do formularza ankiety CSAT
+router.get('/ocena/:token', statusLimiter, async (req, res) => {
+  const { token } = req.params;
+  if (!token || token.length < 8) return res.status(400).json({ error: 'Nieprawidłowy token.' });
+
+  try {
+    const [[ticket]] = await pool.query(
+      'SELECT numer, message_subject, csat_rating, csat_comment, csat_submitted_at FROM ticket WHERE csat_token = ?',
+      [token]
+    );
+    if (!ticket) return res.status(404).json({ error: 'Ankieta nie została znaleziona lub link jest nieprawidłowy.' });
+
+    res.json({
+      numer: ticket.numer,
+      temat: ticket.message_subject,
+      already_submitted: !!ticket.csat_submitted_at,
+      rating: ticket.csat_rating,
+      comment: ticket.csat_comment,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+// POST /api/public/ocena/:token — zapis oceny CSAT
+router.post('/ocena/:token', replyLimiter, async (req, res) => {
+  const { token } = req.params;
+  if (!token || token.length < 8) return res.status(400).json({ error: 'Nieprawidłowy token.' });
+
+  const rating = parseInt(req.body?.rating);
+  if (![1, 2, 3, 4, 5].includes(rating)) return res.status(400).json({ error: 'Nieprawidłowa ocena.' });
+
+  try {
+    const [[ticket]] = await pool.query(
+      'SELECT id, csat_submitted_at FROM ticket WHERE csat_token = ?',
+      [token]
+    );
+    if (!ticket) return res.status(404).json({ error: 'Ankieta nie została znaleziona lub link jest nieprawidłowy.' });
+    if (ticket.csat_submitted_at) return res.status(409).json({ error: 'Ta ankieta została już wypełniona.' });
+
+    const now = Math.floor(Date.now() / 1000);
+    await pool.query(
+      'UPDATE ticket SET csat_rating = ?, csat_comment = ?, csat_submitted_at = ? WHERE id = ?',
+      [rating, (req.body?.comment || '').trim() || null, now, ticket.id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: 'Błąd serwera.' });
   }
 });

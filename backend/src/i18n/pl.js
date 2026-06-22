@@ -71,4 +71,9 @@ module.exports = {
   // Tabela ticketów w mailach
   col_waiting: 'Czeka',
   no_subject: '(brak tematu)',
+
+  // Ankieta satysfakcji (CSAT)
+  subject_satisfaction_survey: '[{appName}] Oceń obsługę zgłoszenia #{numer}',
+  survey_intro: 'Państwa zgłoszenie nr <strong>#{numer}</strong> zostało zamknięte. Prosimy o chwilę czasu i ocenę jakości naszej obsługi.',
+  btn_rate_survey: 'Oceń obsługę',
 };

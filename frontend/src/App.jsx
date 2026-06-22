@@ -18,9 +18,12 @@ import Odlozone from './pages/Odlozone';
 import Kalendarz from './pages/Kalendarz';
 import Statystyki from './pages/Statystyki';
 import Uzytkownicy from './pages/Uzytkownicy';
+import Szablony from './pages/Szablony';
+import Zespoly from './pages/Zespoly';
 import Ustawienia from './pages/Ustawienia';
 import Spam from './pages/Spam';
 import Pomoc from './pages/Pomoc';
+import CsatSurvey from './pages/CsatSurvey';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10000 } },
@@ -37,6 +40,7 @@ function AppRoutes() {
       <Route path="/auth/callback" element={<OAuthCallback />} />
       <Route path="/zgloszenie" element={<PublicForm />} />
       <Route path="/status/:token" element={<PublicTicketView />} />
+      <Route path="/ocena/:token" element={<CsatSurvey />} />
 
       <Route path="/" element={
         <ProtectedRoute>
@@ -82,6 +86,16 @@ function AppRoutes() {
       <Route path="/uzytkownicy" element={
         <ProtectedRoute adminOnly>
           <Layout><Uzytkownicy /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/szablony" element={
+        <ProtectedRoute adminOnly>
+          <Layout><Szablony /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/zespoly" element={
+        <ProtectedRoute adminOnly>
+          <Layout><Zespoly /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/ustawienia" element={

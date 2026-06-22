@@ -23,6 +23,113 @@ function tsToDate(ts) {
   return format(new Date(ts * 1000), 'yyyy-MM-dd');
 }
 
+function BulkAssignModal({ count, users, zespoly, onClose, onAssign }) {
+  const { t } = useTranslation();
+  const [tab, setTab] = useState('worker');
+  const [userId, setUserId] = useState('');
+  const [zespolId, setZespolId] = useState('');
+  const [pending, setPending] = useState(false);
+
+  const submit = async () => {
+    setPending(true);
+    try {
+      await onAssign(tab === 'worker' ? { user_id: userId } : { zespol_id: zespolId });
+      onClose();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm border dark:border-gray-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-800">
+          <h3 className="font-semibold">{t('ticket_list.bulk_assign_title', { count })}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+        </div>
+        <div className="flex border-b dark:border-gray-800">
+          <button
+            onClick={() => setTab('worker')}
+            className={`flex-1 px-3 py-2 text-sm ${tab === 'worker' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-gray-500'}`}
+          >
+            {t('ticket_list.bulk_assign_tab_worker')}
+          </button>
+          <button
+            onClick={() => setTab('team')}
+            className={`flex-1 px-3 py-2 text-sm ${tab === 'team' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-gray-500'}`}
+          >
+            {t('ticket_list.bulk_assign_tab_team')}
+          </button>
+        </div>
+        <div className="p-4">
+          {tab === 'worker' ? (
+            <select value={userId} onChange={e => setUserId(e.target.value)} className="input">
+              <option value="">{t('ticket_list.bulk_assign_choose_worker')}</option>
+              {users?.filter(u => ['admin', 'pracownik'].includes(u.rola)).map(u => (
+                <option key={u.id} value={u.id}>{u.imie} {u.nazwisko}</option>
+              ))}
+            </select>
+          ) : (
+            <select value={zespolId} onChange={e => setZespolId(e.target.value)} className="input">
+              <option value="">{t('ticket_list.bulk_assign_choose_team')}</option>
+              {zespoly?.map(z => (
+                <option key={z.id} value={z.id}>{z.nazwa}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t dark:border-gray-800">
+          <button onClick={onClose} className="btn-secondary">{t('common.cancel')}</button>
+          <button onClick={submit} disabled={pending || (tab === 'worker' ? !userId : !zespolId)} className="btn-primary">
+            {pending ? t('ticket_list.bulk_assigning') : t('ticket_view.assign')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkCategoryModal({ count, kategorie, onClose, onApply }) {
+  const { t } = useTranslation();
+  const [kategoriaId, setKategoriaId] = useState('');
+  const [pending, setPending] = useState(false);
+
+  const submit = async () => {
+    setPending(true);
+    try {
+      await onApply(kategoriaId);
+      onClose();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm border dark:border-gray-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-800">
+          <h3 className="font-semibold">{t('ticket_list.bulk_category_title', { count })}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+        </div>
+        <div className="p-4">
+          <select value={kategoriaId} onChange={e => setKategoriaId(e.target.value)} className="input">
+            <option value="">{t('ticket_list.bulk_category_choose')}</option>
+            {kategorie?.map(k => (
+              <option key={k.id} value={k.id}>{k.nazwa}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t dark:border-gray-800">
+          <button onClick={onClose} className="btn-secondary">{t('common.cancel')}</button>
+          <button onClick={submit} disabled={pending || !kategoriaId} className="btn-primary">
+            {pending ? t('ticket_list.bulk_category_changing') : t('common.save')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TicketList({ title, queryParams = {} }) {
   const { t } = useTranslation();
   const locale = useDateLocale();
@@ -67,6 +174,20 @@ export default function TicketList({ title, queryParams = {} }) {
     queryFn: () => api.get('/users').then(r => r.data.data),
     enabled: isAdmin,
   });
+
+  const { data: zespoly } = useQuery({
+    queryKey: ['zespoly'],
+    queryFn: () => api.get('/zespoly').then(r => r.data.data),
+    enabled: isAdmin,
+  });
+
+  const { data: kategorie } = useQuery({
+    queryKey: ['kategorie'],
+    queryFn: () => api.get('/kategorie').then(r => r.data.data),
+    enabled: isAdmin,
+  });
+
+  const [bulkModal, setBulkModal] = useState(null);
 
   const buildParams = (f) => {
     const p = { ...queryParams, page, limit };
@@ -129,6 +250,26 @@ export default function TicketList({ title, queryParams = {} }) {
       qc.invalidateQueries(['tickets']);
     },
     onError: (err) => toast.error(err.response?.data?.error || t('ticket_list.delete_error')),
+  });
+
+  const bulkAssign = useMutation({
+    mutationFn: (payload) => api.post('/tickets/masowe-przydziel', { ids: selected, ...payload }),
+    onSuccess: ({ data: res }) => {
+      toast.success(t('ticket_list.bulk_assigned', { count: res.count }));
+      setSelected([]);
+      qc.invalidateQueries(['tickets']);
+    },
+    onError: (err) => toast.error(err.response?.data?.error || t('common.error')),
+  });
+
+  const bulkCategory = useMutation({
+    mutationFn: (kategoria_id) => api.post('/tickets/masowe-kategoria', { ids: selected, kategoria_id }),
+    onSuccess: ({ data: res }) => {
+      toast.success(t('ticket_list.bulk_category_changed', { count: res.count }));
+      setSelected([]);
+      qc.invalidateQueries(['tickets']);
+    },
+    onError: (err) => toast.error(err.response?.data?.error || t('common.error')),
   });
 
   const [bulkAiJob, setBulkAiJob] = useState(null);
@@ -211,6 +352,12 @@ export default function TicketList({ title, queryParams = {} }) {
                 className="btn-danger"
               >
                 {bulkDelete.isPending ? t('ticket_list.deleting') : t('ticket_list.delete_selected', { count: selected.length })}
+              </button>
+              <button onClick={() => setBulkModal('assign')} className="btn-secondary">
+                {t('ticket_list.assign_selected', { count: selected.length })}
+              </button>
+              <button onClick={() => setBulkModal('category')} className="btn-secondary">
+                {t('ticket_list.category_selected', { count: selected.length })}
               </button>
             </>
           )}
@@ -415,6 +562,13 @@ export default function TicketList({ title, queryParams = {} }) {
                     </td>
                     <td className="px-3 py-2 text-gray-600 dark:text-gray-300 text-xs">
                       {ticket.przypisani || t('common.unassigned')}
+                      {ticket.zespoly_nazwy && (
+                        <div className="mt-1">
+                          <span className="badge-yellow" title={t('ticket_view.team_ticket_badge')}>
+                            {t('ticket_list.team_badge', { name: ticket.zespoly_nazwy })}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <span className={STATUS_COLORS[ticket.status]}>{STATUS_LABELS[ticket.status]}</span>
@@ -455,6 +609,24 @@ export default function TicketList({ title, queryParams = {} }) {
             )}
           </div>
         </>
+      )}
+
+      {bulkModal === 'assign' && (
+        <BulkAssignModal
+          count={selected.length}
+          users={users}
+          zespoly={zespoly}
+          onClose={() => setBulkModal(null)}
+          onAssign={(payload) => bulkAssign.mutateAsync(payload)}
+        />
+      )}
+      {bulkModal === 'category' && (
+        <BulkCategoryModal
+          count={selected.length}
+          kategorie={kategorie}
+          onClose={() => setBulkModal(null)}
+          onApply={(kategoriaId) => bulkCategory.mutateAsync(kategoriaId)}
+        />
       )}
     </div>
   );

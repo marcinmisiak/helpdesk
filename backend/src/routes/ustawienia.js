@@ -119,6 +119,8 @@ router.put('/', requireAdmin, async (req, res) => {
       'weekend_start_hour',
       // Język
       'app_language',
+      // Ankieta satysfakcji (CSAT)
+      'csat_survey_enabled',
     ];
     const updates = [];
     const values = [];

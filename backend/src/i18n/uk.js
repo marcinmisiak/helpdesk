@@ -71,4 +71,9 @@ module.exports = {
   // Ticket table in emails
   col_waiting: 'Очікує',
   no_subject: '(без теми)',
+
+  // Опитування задоволеності (CSAT)
+  subject_satisfaction_survey: '[{appName}] Оцініть обробку заявки #{numer}',
+  survey_intro: 'Вашу заявку <strong>#{numer}</strong> закрито. Просимо приділити хвилину часу та оцінити якість нашої підтримки.',
+  btn_rate_survey: 'Оцінити підтримку',
 };

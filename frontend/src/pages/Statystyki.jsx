@@ -56,6 +56,11 @@ export default function Statystyki() {
         <Stat label={t('statistics.sla_breach_open')} value={data.kpi?.breachOpen ?? 0} color="blue" />
         <Stat label={t('statistics.sla_response_eligible')} value={data.kpi?.responseEligible ?? 0} color="gray" />
         <Stat label={t('statistics.sla_resolution_eligible')} value={data.kpi?.resolutionEligible ?? 0} color="green" />
+        <Stat
+          label={t('statistics.csat_avg')}
+          value={data.csat?.avg != null ? `${data.csat.avg.toFixed(1)}/5` : '—'}
+          color="green"
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -339,6 +339,28 @@ async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source })
   }
 }
 
+// ─── sendSurvey — ankieta satysfakcji (CSAT) po zamknięciu zgłoszenia ────────
+async function sendSurvey({ to, surveyLink, ticketNumer, lang = 'pl' }) {
+  const appName = await getAppName();
+
+  await sendNotification({
+    to,
+    subject: t(lang, 'subject_satisfaction_survey', { appName, numer: ticketNumer }),
+    greeting: t(lang, 'greeting_formal'),
+    lang,
+    html: `
+      <p>${t(lang, 'survey_intro', { numer: ticketNumer })}</p>
+      <p style="margin-top:16px">
+        <a href="${surveyLink}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px">
+          ${t(lang, 'btn_rate_survey')}
+        </a>
+      </p>
+    `,
+  });
+
+  console.log(`[Mailer] sendSurvey to=${to} numer=${ticketNumer}`);
+}
+
 // Eksportujemy też getSenderInfo dla kompatybilności z imapPoller
 async function getSenderInfo() {
   const [[settings]] = await pool.query(
@@ -405,4 +427,4 @@ async function sendTicketRegisteredEmail({ numer, from, subject, kategoriaNazwa 
   }
 }
 
-module.exports = { sendReply, sendNotification, sendForward, formalTemplate, getSenderInfo, getAppName, notifyAdminsNewTicket, sendTicketRegisteredEmail };
+module.exports = { sendReply, sendNotification, sendForward, formalTemplate, getSenderInfo, getAppName, notifyAdminsNewTicket, sendTicketRegisteredEmail, sendSurvey };

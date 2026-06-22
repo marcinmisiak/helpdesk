@@ -18,6 +18,10 @@ router.get('/', async (req, res) => {
     const [[zamkniete]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE status = 3');
     const [[odlozone]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE odlozony = 1');
     const [[razem]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket');
+    const [[csatRow]] = await pool.query(
+      'SELECT AVG(csat_rating) as avg_rating, COUNT(*) as cnt FROM ticket WHERE csat_rating IS NOT NULL AND csat_submitted_at >= ?',
+      [periodStart]
+    );
 
     // tickety wg dnia ostatnie 30 dni
     const [ostatnie30] = await pool.query(
@@ -139,6 +143,10 @@ router.get('/', async (req, res) => {
       topPracownicy,
       kpi,
       workload,
+      csat: {
+        avg: csatRow.avg_rating !== null ? parseFloat(csatRow.avg_rating) : null,
+        count: csatRow.cnt,
+      },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

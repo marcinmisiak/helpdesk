@@ -182,6 +182,8 @@ export default function Layout({ children }) {
     ...(isAdmin ? [
       { to: '/statystyki', label: t('nav.statistics'), icon: '📊' },
       { to: '/uzytkownicy', label: t('nav.users'), icon: '👥' },
+      { to: '/zespoly', label: t('nav.teams'), icon: '👨‍👩‍👧' },
+      { to: '/szablony', label: t('nav.templates'), icon: '📝' },
       { to: '/ustawienia', label: t('nav.settings'), icon: '⚙️' },
       { to: '/spam', label: t('nav.spam'), icon: '🚫', badge: counts?.spam },
     ] : []),

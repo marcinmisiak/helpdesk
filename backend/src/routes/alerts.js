@@ -58,13 +58,19 @@ router.get('/count', async (req, res) => {
     const [[nowe]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE status = 1 AND (odlozony = 0 OR odlozony IS NULL)');
     const [[wtoku]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE status = 2 AND (odlozony = 0 OR odlozony IS NULL)');
     const [[moje]] = await pool.query(
-      'SELECT COUNT(*) as cnt FROM ticket t JOIN user_has_ticket uht ON uht.ticket_id = t.id WHERE uht.user_id = ? AND t.status = 2 AND (t.odlozony = 0 OR t.odlozony IS NULL)',
-      [req.user.id]
+      `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
+       WHERE t.status = 2 AND (t.odlozony = 0 OR t.odlozony IS NULL)
+         AND (EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id AND uht.user_id = ?)
+              OR EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?))`,
+      [req.user.id, req.user.id]
     );
     const [[odloz]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE odlozony = 1');
     const [[mojeOdloz]] = await pool.query(
-      'SELECT COUNT(*) as cnt FROM ticket t JOIN user_has_ticket uht ON uht.ticket_id = t.id WHERE uht.user_id = ? AND t.odlozony = 1',
-      [req.user.id]
+      `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
+       WHERE t.odlozony = 1
+         AND (EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id AND uht.user_id = ?)
+              OR EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?))`,
+      [req.user.id, req.user.id]
     );
 
     let alertCount = 0;

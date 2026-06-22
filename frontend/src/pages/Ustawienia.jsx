@@ -1092,6 +1092,10 @@ export default function Ustawienia() {
                   <span className="block text-xs text-slate-400 font-normal">Wyślij email z numerem ticketu zaraz po jego zarejestrowaniu (email przychodzący i nowy ticket ręczny)</span>
                 </label>
               </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="csat_survey_enabled" checked={!!effectiveForm.csat_survey_enabled} onChange={setCheck('csat_survey_enabled')} />
+                <label htmlFor="csat_survey_enabled" className="text-sm">{t('settings.csat_enabled_label')}</label>
+              </div>
             </div>
           </div>
 

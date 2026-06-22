@@ -35,6 +35,8 @@ app.use('/api/docs', require('./routes/docs'));
 app.use('/api/pomoc', require('./routes/pomoc'));
 app.use('/api/public', require('./routes/public'));
 app.use('/api/kategorie', require('./routes/kategorie'));
+app.use('/api/szablony', require('./routes/szablony'));
+app.use('/api/zespoly', require('./routes/zespoly'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

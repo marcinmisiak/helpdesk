@@ -303,6 +303,21 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
   const [aiLoading, setAiLoading] = useState(false);
   const [files, setFiles] = useState([]);
 
+  const { data: templates } = useQuery({
+    queryKey: ['szablony'],
+    queryFn: () => api.get('/szablony').then(r => r.data.data),
+  });
+
+  const applyTemplate = (e) => {
+    const id = e.target.value;
+    e.target.value = '';
+    if (!id) return;
+    const tpl = templates?.find(s => String(s.id) === id);
+    if (!tpl) return;
+    if (tresc && !confirm(t('ticket_view.reply_template_confirm_replace'))) return;
+    setTresc(tpl.tresc);
+  };
+
   const addFiles = (newFiles) => setFiles(prev => [...prev, ...Array.from(newFiles)]);
   const removeFile = (idx) => setFiles(prev => prev.filter((_, i) => i !== idx));
 
@@ -372,14 +387,29 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="label mb-0">{t('ticket_view.reply_content')}</label>
-              <button
-                onClick={suggestAi}
-                disabled={aiLoading}
-                className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 flex items-center gap-1 disabled:opacity-50"
-                title={t('ticket_view.reply_ai_suggest')}
-              >
-                {aiLoading ? `⏳ ${t('ticket_view.reply_ai_loading')}` : `🤖 ${t('ticket_view.reply_ai_suggest')}`}
-              </button>
+              <div className="flex items-center gap-3">
+                {templates?.length > 0 && (
+                  <select
+                    onChange={applyTemplate}
+                    defaultValue=""
+                    title={t('ticket_view.reply_template_label')}
+                    className="text-xs border rounded px-1 py-0.5 dark:bg-gray-800 dark:border-gray-700"
+                  >
+                    <option value="">{`📋 ${t('ticket_view.reply_template_label')}`}</option>
+                    {templates.map(tpl => (
+                      <option key={tpl.id} value={tpl.id}>{tpl.nazwa}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  onClick={suggestAi}
+                  disabled={aiLoading}
+                  className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 flex items-center gap-1 disabled:opacity-50"
+                  title={t('ticket_view.reply_ai_suggest')}
+                >
+                  {aiLoading ? `⏳ ${t('ticket_view.reply_ai_loading')}` : `🤖 ${t('ticket_view.reply_ai_suggest')}`}
+                </button>
+              </div>
             </div>
             <textarea
               value={tresc}
@@ -448,21 +478,39 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
 
 function PrzydielModal({ ticketId, onClose, onSuccess }) {
   const { t } = useTranslation();
+  const [tab, setTab] = useState('worker');
   const [userId, setUserId] = useState('');
+  const [zespolId, setZespolId] = useState('');
   const { data: users } = useQuery({
     queryKey: ['users'],
     queryFn: () => api.get('/users').then(r => r.data.data),
   });
+  const { data: zespoly } = useQuery({
+    queryKey: ['zespoly'],
+    queryFn: () => api.get('/zespoly').then(r => r.data.data),
+  });
 
   const assign = async () => {
-    if (!userId) return toast.error(t('ticket_view.assign_error'));
-    try {
-      await api.post(`/tickets/${ticketId}/przydziel`, { user_id: userId });
-      toast.success(t('ticket_view.assign'));
-      onSuccess();
-      onClose();
-    } catch (err) {
-      toast.error(err.response?.data?.error || t('common.error'));
+    if (tab === 'worker') {
+      if (!userId) return toast.error(t('ticket_view.assign_error'));
+      try {
+        await api.post(`/tickets/${ticketId}/przydziel`, { user_id: userId });
+        toast.success(t('ticket_view.assign'));
+        onSuccess();
+        onClose();
+      } catch (err) {
+        toast.error(err.response?.data?.error || t('common.error'));
+      }
+    } else {
+      if (!zespolId) return toast.error(t('ticket_view.assign_team_error'));
+      try {
+        await api.post(`/tickets/${ticketId}/przydziel-zespol`, { zespol_id: zespolId });
+        toast.success(t('ticket_view.toast_team_assigned'));
+        onSuccess();
+        onClose();
+      } catch (err) {
+        toast.error(err.response?.data?.error || t('common.error'));
+      }
     }
   };
 
@@ -473,14 +521,42 @@ function PrzydielModal({ ticketId, onClose, onSuccess }) {
           <h3 className="font-semibold">{t('ticket_view.assign_title')}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">×</button>
         </div>
+        <div className="flex border-b dark:border-gray-800">
+          <button
+            onClick={() => setTab('worker')}
+            className={`flex-1 px-3 py-2 text-sm ${tab === 'worker' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-gray-500'}`}
+          >
+            {t('ticket_view.assign_tab_worker')}
+          </button>
+          <button
+            onClick={() => setTab('team')}
+            className={`flex-1 px-3 py-2 text-sm ${tab === 'team' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-gray-500'}`}
+          >
+            {t('ticket_view.assign_tab_team')}
+          </button>
+        </div>
         <div className="p-4">
-          <label className="label">{t('ticket_view.assign_worker')}</label>
-          <select value={userId} onChange={e => setUserId(e.target.value)} className="input">
-            <option value="">{t('ticket_view.assign_choose')}</option>
-            {users?.filter(u => ['admin', 'pracownik'].includes(u.rola)).map(u => (
-              <option key={u.id} value={u.id}>{u.imie} {u.nazwisko} ({u.email})</option>
-            ))}
-          </select>
+          {tab === 'worker' ? (
+            <>
+              <label className="label">{t('ticket_view.assign_worker')}</label>
+              <select value={userId} onChange={e => setUserId(e.target.value)} className="input">
+                <option value="">{t('ticket_view.assign_choose')}</option>
+                {users?.filter(u => ['admin', 'pracownik'].includes(u.rola)).map(u => (
+                  <option key={u.id} value={u.id}>{u.imie} {u.nazwisko} ({u.email})</option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <>
+              <label className="label">{t('ticket_view.assign_team_label')}</label>
+              <select value={zespolId} onChange={e => setZespolId(e.target.value)} className="input">
+                <option value="">{t('ticket_view.assign_team_choose')}</option>
+                {zespoly?.map(z => (
+                  <option key={z.id} value={z.id}>{z.nazwa}</option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-4 py-3 border-t">
           <button onClick={onClose} className="btn-secondary">{t('common.cancel')}</button>
@@ -764,6 +840,12 @@ export default function TicketView() {
     onError: (err) => toast.error(err.response?.data?.error || t('common.error')),
   });
 
+  const usunPrzydzialZespol = useMutation({
+    mutationFn: (zespolId) => api.delete(`/tickets/${id}/przydziel-zespol/${zespolId}`),
+    onSuccess: () => { toast.success(t('ticket_view.toast_team_unassigned')); qc.invalidateQueries(['ticket', id]); },
+    onError: (err) => toast.error(err.response?.data?.error || t('common.error')),
+  });
+
   const usunTicket = useMutation({
     mutationFn: () => api.delete(`/tickets/${id}/trwale`),
     onSuccess: () => { toast.success(t('ticket_view.toast_deleted')); navigate('/tickets'); },
@@ -773,7 +855,7 @@ export default function TicketView() {
   if (isLoading) return <div className="text-center py-12 text-gray-500 dark:text-gray-400">{t('common.loading')}</div>;
   if (error) return <div className="text-center py-12 text-red-500">{t('ticket_view.error_loading')}</div>;
 
-  const { ticket, korespondencja, notatki, pliki, przypisania } = data;
+  const { ticket, korespondencja, notatki, pliki, przypisania, zespoly } = data;
   const isOpen = ticket.status !== 3;
 
   return (
@@ -974,6 +1056,25 @@ export default function TicketView() {
                         onClick={() => usunPrzydzial.mutate(p.user_id)}
                         className="text-blue-400 hover:text-red-500 ml-1"
                         title={t('ticket_view.toast_unassigned')}
+                      >×</button>
+                    )}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
+          {zespoly?.length > 0 && (
+            <div className="col-span-2">
+              <dt className="label">{t('ticket_view.field_assigned_teams')}</dt>
+              <dd className="flex flex-wrap gap-2">
+                {zespoly.map(z => (
+                  <span key={z.id} className="flex items-center gap-1 badge-yellow" title={t('ticket_view.team_ticket_badge')}>
+                    👨‍👩‍👧 {z.nazwa}
+                    {isAdmin && (
+                      <button
+                        onClick={() => usunPrzydzialZespol.mutate(z.zespol_id)}
+                        className="text-yellow-600 hover:text-red-500 ml-1"
+                        title={t('ticket_view.toast_team_unassigned')}
                       >×</button>
                     )}
                   </span>

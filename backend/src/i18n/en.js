@@ -71,4 +71,9 @@ module.exports = {
   // Ticket table in emails
   col_waiting: 'Waiting',
   no_subject: '(no subject)',
+
+  // Satisfaction survey (CSAT)
+  subject_satisfaction_survey: '[{appName}] Rate the support for ticket #{numer}',
+  survey_intro: 'Your ticket <strong>#{numer}</strong> has been closed. We would appreciate a moment of your time to rate the quality of our support.',
+  btn_rate_survey: 'Rate the support',
 };

@@ -12,6 +12,7 @@ const { notifyAllAdmins, notifyUsers } = require('../utils/webpush');
 const { getSiteUrl } = require('../utils/siteUrl');
 const { normalizePriority, computeDeadlines, enrichTicketSla } = require('../utils/sla');
 const { classifyAndSave, generateReply } = require('../utils/groqClassifier');
+const { maybeSendCsatSurvey } = require('../utils/csat');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 const uploadStorage = multer.diskStorage({
@@ -54,8 +55,9 @@ router.get('/', async (req, res) => {
     }
 
     if (moje === '1') {
-      where += ' AND uht.user_id = ?';
-      params.push(req.user.id);
+      where += ` AND (EXISTS (SELECT 1 FROM user_has_ticket x WHERE x.ticket_id = t.id AND x.user_id = ?)
+                      OR EXISTS (SELECT 1 FROM zespol_has_ticket zht_m JOIN zespol_user zu_m ON zu_m.zespol_id = zht_m.zespol_id WHERE zht_m.ticket_id = t.id AND zu_m.user_id = ?))`;
+      params.push(req.user.id, req.user.id);
     }
 
     if (priority) {
@@ -83,14 +85,17 @@ router.get('/', async (req, res) => {
       params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
 
-    const joinMoje = moje === '1' ? 'INNER JOIN user_has_ticket uht ON uht.ticket_id = t.id' : 'LEFT JOIN user_has_ticket uht ON uht.ticket_id = t.id';
+    const joinUht = 'LEFT JOIN user_has_ticket uht ON uht.ticket_id = t.id';
 
     const [rows] = await pool.query(
       `SELECT t.*,
-              GROUP_CONCAT(DISTINCT CONCAT(u.imie, ' ', u.nazwisko) SEPARATOR ', ') as przypisani
+              GROUP_CONCAT(DISTINCT CONCAT(u.imie, ' ', u.nazwisko) SEPARATOR ', ') as przypisani,
+              GROUP_CONCAT(DISTINCT z.nazwa SEPARATOR ', ') as zespoly_nazwy
        FROM ticket t
-       ${joinMoje}
+       ${joinUht}
        LEFT JOIN user u ON u.id = uht.user_id
+       LEFT JOIN zespol_has_ticket zht ON zht.ticket_id = t.id
+       LEFT JOIN zespol z ON z.id = zht.zespol_id
        WHERE ${where}
        GROUP BY t.id
        ORDER BY t.id DESC
@@ -99,7 +104,7 @@ router.get('/', async (req, res) => {
     );
 
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(DISTINCT t.id) as total FROM ticket t ${joinMoje} WHERE ${where}`,
+      `SELECT COUNT(DISTINCT t.id) as total FROM ticket t ${joinUht} WHERE ${where}`,
       params
     );
 
@@ -205,10 +210,14 @@ router.get('/:id', async (req, res) => {
     const [rows] = await pool.query(
       `SELECT t.*,
               GROUP_CONCAT(DISTINCT uht.user_id) as przypisani_ids,
-              GROUP_CONCAT(DISTINCT CONCAT(u.imie, ' ', u.nazwisko) SEPARATOR ', ') as przypisani
+              GROUP_CONCAT(DISTINCT CONCAT(u.imie, ' ', u.nazwisko) SEPARATOR ', ') as przypisani,
+              GROUP_CONCAT(DISTINCT zht.zespol_id) as zespoly_ids,
+              GROUP_CONCAT(DISTINCT z.nazwa SEPARATOR ', ') as zespoly_nazwy
        FROM ticket t
        LEFT JOIN user_has_ticket uht ON uht.ticket_id = t.id
        LEFT JOIN user u ON u.id = uht.user_id
+       LEFT JOIN zespol_has_ticket zht ON zht.ticket_id = t.id
+       LEFT JOIN zespol z ON z.id = zht.zespol_id
        WHERE t.id = ?
        GROUP BY t.id`,
       [req.params.id]
@@ -304,8 +313,16 @@ router.get('/:id', async (req, res) => {
       [req.params.id]
     );
 
+    // zespoły przydzielone do ticketu
+    const [zespoly] = await pool.query(
+      `SELECT zht.*, z.nazwa FROM zespol_has_ticket zht
+       LEFT JOIN zespol z ON z.id = zht.zespol_id
+       WHERE zht.ticket_id = ?`,
+      [req.params.id]
+    );
+
     const enrichedTicket = enrichTicketSla(ticket);
-    res.json({ ticket: enrichedTicket, korespondencja: korWithPliki, notatki, pliki: plikiTicket, przypisania });
+    res.json({ ticket: enrichedTicket, korespondencja: korWithPliki, notatki, pliki: plikiTicket, przypisania, zespoly });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -533,6 +550,69 @@ router.delete('/:id/przydziel/:user_id', async (req, res) => {
   }
 });
 
+// POST /api/tickets/:id/przydziel-zespol — przydziel ticket do zespołu
+router.post('/:id/przydziel-zespol', async (req, res) => {
+  try {
+    const { zespol_id } = req.body;
+    if (!zespol_id) return res.status(400).json({ error: 'Brak zespol_id' });
+
+    const now = Math.floor(Date.now() / 1000);
+    const [existing] = await pool.query(
+      'SELECT id FROM zespol_has_ticket WHERE ticket_id = ? AND zespol_id = ?',
+      [req.params.id, zespol_id]
+    );
+    if (!existing.length) {
+      await pool.query(
+        'INSERT INTO zespol_has_ticket (ticket_id, zespol_id, created_at, created_by) VALUES (?, ?, ?, ?)',
+        [req.params.id, zespol_id, now, req.user.id]
+      );
+
+      const [[ticket]] = await pool.query(
+        'SELECT numer, message_subject FROM ticket WHERE id = ?', [req.params.id]
+      );
+      const [[zespol]] = await pool.query('SELECT nazwa FROM zespol WHERE id = ?', [zespol_id]);
+      const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [zespol_id]);
+      const memberIds = members.map(m => m.user_id);
+
+      if (ticket && memberIds.length) {
+        notifyUsers(memberIds, {
+          title: `Przydzielono zgłoszenie zespołowi: ${zespol?.nazwa || ''}`,
+          body: ticket.message_subject || `#${ticket.numer}`,
+          url: `/tickets/${req.params.id}`,
+        }).catch(() => {});
+      }
+    }
+    await pool.query('UPDATE ticket SET status=2 WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/tickets/:id/przydziel-zespol/:zespol_id
+router.delete('/:id/przydziel-zespol/:zespol_id', async (req, res) => {
+  try {
+    await pool.query(
+      'DELETE FROM zespol_has_ticket WHERE ticket_id = ? AND zespol_id = ?',
+      [req.params.id, req.params.zespol_id]
+    );
+    const [[{ cntUser }]] = await pool.query(
+      'SELECT COUNT(*) as cntUser FROM user_has_ticket WHERE ticket_id = ?',
+      [req.params.id]
+    );
+    const [[{ cntZespol }]] = await pool.query(
+      'SELECT COUNT(*) as cntZespol FROM zespol_has_ticket WHERE ticket_id = ?',
+      [req.params.id]
+    );
+    if (cntUser === 0 && cntZespol === 0) {
+      await pool.query('UPDATE ticket SET status=1 WHERE id=?', [req.params.id]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/tickets/:id/ldap-refresh — odśwież dane LDAP zgłaszającego
 router.post('/:id/ldap-refresh', async (req, res) => {
   try {
@@ -574,6 +654,7 @@ router.post('/:id/zamknij', async (req, res) => {
     );
 
     await pool.query('UPDATE ticket SET status=3, data_zamkniecia=?, odlozony=0 WHERE id=?', [now, req.params.id]);
+    maybeSendCsatSurvey(req.params.id).catch(() => {});
 
     // Email do zgłaszającego o zamknięciu
     if (sendNotification && ticket?.message_from) {
@@ -625,6 +706,7 @@ router.post('/:id/status', async (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     if (newStatus === 3) {
       await pool.query('UPDATE ticket SET status=3, data_zamkniecia=? WHERE id=?', [now, req.params.id]);
+      maybeSendCsatSurvey(req.params.id).catch(() => {});
     } else if (newStatus === 1) {
       await pool.query('UPDATE ticket SET status=1, data_zamkniecia=NULL WHERE id=?', [req.params.id]);
     } else {
@@ -870,6 +952,7 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
     // Zamknij ticket jeśli zaznaczono (zamknij przychodzi jako string '0'/'1' z FormData)
     if (closing) {
       await pool.query('UPDATE ticket SET status=3, data_zamkniecia=?, odlozony=0 WHERE id=?', [now, req.params.id]);
+      maybeSendCsatSurvey(req.params.id).catch(() => {});
     }
 
     const newStatus = closing ? 3 : (oldStatus !== 3 ? 2 : 3);
@@ -986,6 +1069,80 @@ router.post('/masowe', requireAdmin, async (req, res) => {
     await pool.query(
       `UPDATE ticket SET status=3, data_zamkniecia=? WHERE id IN (${ids.map(() => '?').join(',')})`,
       [now, ...ids]
+    );
+    res.json({ success: true, count: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/tickets/masowe-przydziel — masowy przydział do pracownika lub zespołu
+router.post('/masowe-przydziel', requireAdmin, async (req, res) => {
+  try {
+    const { ids, user_id, zespol_id } = req.body;
+    if (!ids?.length) return res.status(400).json({ error: 'Brak ids' });
+    if (!user_id && !zespol_id) return res.status(400).json({ error: 'Podaj user_id lub zespol_id' });
+
+    const now = Math.floor(Date.now() / 1000);
+    const placeholders = ids.map(() => '?').join(',');
+
+    if (user_id) {
+      for (const ticketId of ids) {
+        const [existing] = await pool.query(
+          'SELECT id FROM user_has_ticket WHERE ticket_id = ? AND user_id = ?',
+          [ticketId, user_id]
+        );
+        if (!existing.length) {
+          await pool.query(
+            'INSERT INTO user_has_ticket (ticket_id, user_id, data, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [ticketId, user_id, now, req.user.id, req.user.id, now, now]
+          );
+        }
+      }
+      await pool.query(`UPDATE ticket SET status=2 WHERE id IN (${placeholders})`, ids);
+      notifyUsers([user_id], {
+        title: `Przydzielono ${ids.length} zgłoszeń`,
+        body: 'Sprawdź listę "Moje zgłoszenia"',
+        url: '/moje',
+      }).catch(() => {});
+    } else {
+      for (const ticketId of ids) {
+        const [existing] = await pool.query(
+          'SELECT id FROM zespol_has_ticket WHERE ticket_id = ? AND zespol_id = ?',
+          [ticketId, zespol_id]
+        );
+        if (!existing.length) {
+          await pool.query(
+            'INSERT INTO zespol_has_ticket (ticket_id, zespol_id, created_at, created_by) VALUES (?, ?, ?, ?)',
+            [ticketId, zespol_id, now, req.user.id]
+          );
+        }
+      }
+      await pool.query(`UPDATE ticket SET status=2 WHERE id IN (${placeholders})`, ids);
+      const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [zespol_id]);
+      const [[zespol]] = await pool.query('SELECT nazwa FROM zespol WHERE id = ?', [zespol_id]);
+      notifyUsers(members.map(m => m.user_id), {
+        title: `Przydzielono ${ids.length} zgłoszeń zespołowi: ${zespol?.nazwa || ''}`,
+        body: 'Sprawdź listę "Moje zgłoszenia"',
+        url: '/moje',
+      }).catch(() => {});
+    }
+
+    res.json({ success: true, count: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/tickets/masowe-kategoria — masowa zmiana kategorii
+router.post('/masowe-kategoria', requireAdmin, async (req, res) => {
+  try {
+    const { ids, kategoria_id } = req.body;
+    if (!ids?.length) return res.status(400).json({ error: 'Brak ids' });
+    if (!kategoria_id) return res.status(400).json({ error: 'Brak kategoria_id' });
+    await pool.query(
+      `UPDATE ticket SET kategoria_id=? WHERE id IN (${ids.map(() => '?').join(',')})`,
+      [kategoria_id, ...ids]
     );
     res.json({ success: true, count: ids.length });
   } catch (err) {
