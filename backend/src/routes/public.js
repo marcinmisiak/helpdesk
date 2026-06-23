@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
@@ -14,6 +13,8 @@ const { lookupEmail } = require('../utils/ldap');
 const { classifyAndSave, generatePublicReply } = require('../utils/groqClassifier');
 const { sendWeekendAutoReply } = require('../utils/weekendAutoReply');
 const { maybeSendCsatSurvey } = require('../utils/csat');
+const { sendWebhookEvent } = require('../utils/webhookClient');
+const { createChallenge, verifyChallenge } = require('../utils/mathCaptcha');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -74,17 +75,6 @@ const ldapLimiter = rateLimit({
   message: { error: 'Zbyt wiele zapytań.' },
 });
 
-// Przechowuj wyzwania captcha (w pamięci, wygasają po 15 min)
-const captchaChallenges = new Map();
-
-function cleanExpiredCaptchas() {
-  const now = Date.now();
-  for (const [id, ch] of captchaChallenges) {
-    if (now > ch.expiresAt) captchaChallenges.delete(id);
-  }
-}
-setInterval(cleanExpiredCaptchas, 5 * 60 * 1000);
-
 // GET /api/public/kategorie — aktywne kategorie dla formularza
 router.get('/kategorie', async (req, res) => {
   try {
@@ -99,16 +89,7 @@ router.get('/kategorie', async (req, res) => {
 
 // GET /api/public/captcha — nowe wyzwanie matematyczne
 router.get('/captcha', (req, res) => {
-  const a = Math.floor(Math.random() * 10) + 1;
-  const b = Math.floor(Math.random() * 10) + 1;
-  const id = crypto.randomBytes(10).toString('hex');
-
-  captchaChallenges.set(id, {
-    answer: a + b,
-    expiresAt: Date.now() + 15 * 60 * 1000,
-  });
-
-  res.json({ id, question: `${a} + ${b}` });
+  res.json(createChallenge());
 });
 
 // GET /api/public/ldap-lookup?email=xxx — sprawdź email w LDAP
@@ -182,14 +163,13 @@ router.post('/zgloszenie', submitLimiter, (req, res, next) => {
   }
 
   // Weryfikacja captcha
-  const challenge = captchaChallenges.get(captchaId);
-  if (!challenge || Date.now() > challenge.expiresAt) {
+  const captchaResult = verifyChallenge(captchaId, captchaAnswer);
+  if (captchaResult === 'expired') {
     return res.status(400).json({ error: 'Captcha wygasła. Odśwież stronę i spróbuj ponownie.' });
   }
-  if (parseInt(captchaAnswer, 10) !== challenge.answer) {
+  if (captchaResult === 'wrong') {
     return res.status(400).json({ error: 'Nieprawidłowa odpowiedź captcha.' });
   }
-  captchaChallenges.delete(captchaId);
 
   try {
     // Sprawdź kategorie
@@ -263,6 +243,11 @@ router.post('/zgloszenie', submitLimiter, (req, res, next) => {
       from: messageFrom,
       subject: messageSubject,
       source: 'web_form',
+    }).catch(() => {});
+
+    sendWebhookEvent('ticket.created', {
+      ticket: { id: ticketId, numer, subject: messageSubject, from: messageFrom, priority, status: 1, zrodlo: 'web_form' },
+      message: { tresc: opis.trim(), html: null, from: messageFrom },
     }).catch(() => {});
 
     // Auto-odpowiedź weekendowa
@@ -452,6 +437,11 @@ router.post('/status/:token/odpowiedz', replyLimiter, async (req, res) => {
         }).catch(() => {});
       }
     } catch { /* email nieobowiązkowy */ }
+
+    sendWebhookEvent('ticket.message.received', {
+      ticket: { id: ticket.id, numer: ticket.numer, subject: ticket.message_subject, from: ticket.message_from, status: ticket.status, zrodlo: 'web_form' },
+      message: { tresc: tresc.trim(), html: null, from: ticket.message_from },
+    }).catch(() => {});
 
     res.json({ success: true });
   } catch (err) {

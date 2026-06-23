@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const msGraph = require('./msGraphClient');
 const { getSiteUrl } = require('./siteUrl');
+const { sendWebhookEvent } = require('./webhookClient');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -252,6 +253,13 @@ function extractEmailAddress(fromText) {
 // Gdy odpowiedź nie ma dopasowania przez Message-ID ani numer w temacie (np. mail
 // systemowy bez śledzonego Message-ID i bez numeru w temacie), spróbuj znaleźć
 // zgłoszenie tego samego nadawcy, którego temat zawiera się w temacie odpowiedzi.
+//
+// Uwaga: dopasowanie (tu i w processEmailItem poniżej) jest celowo GLOBALNE — nie
+// filtrowane po kanale/skrzynce (ticket.kanal_id). Odpowiedzi pracowników wychodzą
+// zawsze z jednej, głównej tożsamości SMTP, więc klient odpisujący na naszą wiadomość
+// i tak trafia do głównej skrzynki, nie do skrzynki kanału, z którego przyszło pierwsze
+// zgłoszenie. Filtrowanie po kanale tutaj sprawiłoby, że taka odpowiedź nigdy nie
+// znalazłaby swojego ticketu (kanal_id się nie zgadza) i tworzyłaby duplikat.
 async function findTicketBySenderAndSubject(from, subject) {
   const email = extractEmailAddress(from);
   if (!email || !email.includes('@')) return null;
@@ -278,7 +286,9 @@ async function findTicketBySenderAndSubject(from, subject) {
 }
 
 // ─── Wspólna logika przetwarzania pojedynczej wiadomości ─────────────────────
-async function processEmailItem({ from, to, subject, text, html, messageId, inReplyTo, references, attachments }, settings) {
+// channel (opcjonalnie) = { id, zespolId } gdy wiadomość przyszła ze skrzynki kanału
+// e-mail (kanal_czatu.typ='email'), null dla głównej skrzynki z ustawienia.
+async function processEmailItem({ from, to, subject, text, html, messageId, inReplyTo, references, attachments }, settings, channel = null) {
   let ticketId = null;
   let isForwardReply = false;
 
@@ -367,13 +377,23 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
     }
 
     console.log(`[IMAP] Dodano odpowiedź do ticketu #${ticketId}${isForwardReply ? ' (forward_reply)' : ''}`);
+
+    const [[ticketRow]] = await pool.query('SELECT numer, message_subject, status, zrodlo, kanal_id FROM ticket WHERE id = ?', [ticketId]);
+    // Tickety z kanału e-mail (przypisane do zespołu) są obsługiwane wyłącznie ręcznie przez
+    // pracowników — webhook n8n (i jego automatyczne odpowiedzi) celowo ich nie dotyczy.
+    if (!ticketRow?.kanal_id) {
+      sendWebhookEvent('ticket.message.received', {
+        ticket: { id: ticketId, numer: ticketRow?.numer, subject: ticketRow?.message_subject, from, status: ticketRow?.status, zrodlo: ticketRow?.zrodlo },
+        message: { tresc: saveText, html: saveHtml || null, from },
+      }).catch(() => {});
+    }
   } else {
     const numer = Math.random().toString().slice(2, 8);
     const [result] = await pool.query(
       `INSERT INTO ticket
-        (numer, message_from, message_to, message_subject, tresc, html, message_cc, status, data_utworzenia, odlozony, podswietl, message_id, zrodlo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, 'email')`,
-      [numer, from, to, subject, saveText, saveHtml || null, '', now, messageId.replace(/[<>]/g, '')]
+        (numer, message_from, message_to, message_subject, tresc, html, message_cc, status, data_utworzenia, odlozony, podswietl, message_id, zrodlo, kanal_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, 'email', ?)`,
+      [numer, from, to, subject, saveText, saveHtml || null, '', now, messageId.replace(/[<>]/g, ''), channel?.id || null]
     );
     const cidMapT = await saveEmailAttachments(attachments, 1, result.insertId);
     if (saveHtml && Object.keys(cidMapT).length) {
@@ -381,17 +401,39 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
         [replaceCidReferences(saveHtml, cidMapT), result.insertId]);
     }
 
-    const { notifyAllAdmins } = require('./webpush');
+    // Status zostaje 1 (nowy) niezależnie od kanału — w przeciwieństwie do czatu/Messengera,
+    // e-mail jest async i musi przejść tę samą kolejkę nowy→przydzielony→zamknięty, inaczej
+    // liczniki "nowe"/"w toku" (statystyki.js, alerts.js) zostałyby zafałszowane.
+    if (channel?.zespolId) {
+      await pool.query(
+        'INSERT INTO zespol_has_ticket (zespol_id, ticket_id, created_at) VALUES (?, ?, ?)',
+        [channel.zespolId, result.insertId, now]
+      );
+    }
+
+    const { notifyAllAdmins, notifyUsers } = require('./webpush');
     const { classifyAndSave } = require('./groqClassifier');
     const { lookupEmail } = require('./ldap');
     const { notifyAdminsNewTicket, sendTicketRegisteredEmail } = require('./mailer');
 
-    notifyAllAdmins({
-      title: 'Nowe zgłoszenie',
-      body: `Od: ${from} | Temat: ${subject}`,
-      url: `/tickets/${result.insertId}`,
-    }).catch(() => {});
+    if (channel?.zespolId) {
+      const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [channel.zespolId]);
+      notifyUsers(members.map((m) => m.user_id), {
+        title: 'Nowe zgłoszenie e-mail',
+        body: `Od: ${from} | Temat: ${subject}`,
+        url: `/tickets/${result.insertId}`,
+      }).catch(() => {});
+    } else {
+      notifyAllAdmins({
+        title: 'Nowe zgłoszenie',
+        body: `Od: ${from} | Temat: ${subject}`,
+        url: `/tickets/${result.insertId}`,
+      }).catch(() => {});
+    }
 
+    // notifyAdminsNewTicket: siatka bezpieczeństwa "nikt nie czyta push" (sprawdza globalnie
+    // czy jakikolwiek admin jest online, nie per zespół) — celowo zostaje bez zmian dla obu
+    // ścieżek, to nie jest główny mechanizm powiadomień.
     notifyAdminsNewTicket({
       ticketId: result.insertId,
       numer,
@@ -416,12 +458,21 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
       }
     }).catch(() => {});
 
+    // Tickety z kanału e-mail (przypisane do zespołu) są obsługiwane wyłącznie ręcznie przez
+    // pracowników — webhook n8n (i jego automatyczne odpowiedzi) celowo ich nie dotyczy.
+    if (!channel?.id) {
+      sendWebhookEvent('ticket.created', {
+        ticket: { id: result.insertId, numer, subject, from, priority: null, status: 1, zrodlo: 'email' },
+        message: { tresc: saveText, html: saveHtml || null, from },
+      }).catch(() => {});
+    }
+
     console.log(`[IMAP] Nowy ticket #${result.insertId} (${numer}) od ${from}`);
   }
 }
 
 // ─── Przetwarzanie surowych emaili (IMAP) ────────────────────────────────────
-async function processEmails(emails, settings) {
+async function processEmails(emails, settings, channel = null) {
   for (const raw of emails) {
     try {
       const parsed = await simpleParser(raw);
@@ -448,7 +499,7 @@ async function processEmails(emails, settings) {
           inReplyTo: parsed.inReplyTo || '',
           references: parsed.references || [],
           attachments: parsed.attachments || [],
-        }, settings);
+        }, settings, channel);
       }
     } catch (e) {
       console.error('[IMAP] Błąd przetwarzania wiadomości:', e.message);
@@ -457,7 +508,7 @@ async function processEmails(emails, settings) {
 }
 
 // ─── Przetwarzanie wiadomości z Microsoft Graph ───────────────────────────────
-async function processGraphMessages(messages, settings) {
+async function processGraphMessages(messages, settings, channel = null) {
   for (const msg of messages) {
     try {
       const fromAddr = msg.from?.emailAddress
@@ -515,7 +566,7 @@ async function processGraphMessages(messages, settings) {
           inReplyTo,
           references,
           attachments,
-        }, settings);
+        }, settings, channel);
       }
     } catch (e) {
       console.error('[Graph] Błąd przetwarzania wiadomości:', e.message);
@@ -639,37 +690,100 @@ async function cleanOldGraphMessages(settings, days) {
   }
 }
 
+// ─── Dodatkowe skrzynki e-mail przypisane do zespołu (kanal_czatu.typ='email') ─
+// Każdy kanał ma własne dane IMAP i jest odpytywany niezależnie od głównej skrzynki;
+// błąd jednego kanału (np. złe dane logowania) nie przerywa innych ani głównej skrzynki.
+async function pollEmailChannels(globalSettings) {
+  const [channels] = await pool.query(
+    `SELECT id, zespol_id, imap_server, imap_port, imap_login, imap_password, imap_path,
+            ms_graph_enabled, ms_graph_mailbox
+     FROM kanal_czatu WHERE typ = 'email' AND aktywny = 1`
+  );
+  for (const ch of channels) {
+    const channel = { id: ch.id, zespolId: ch.zespol_id };
+
+    if (ch.ms_graph_enabled) {
+      // Skrzynka Microsoft 365 — używa współdzielonej aplikacji Azure skonfigurowanej
+      // w Ustawieniach (ms_graph_client_id/secret/tenant_id), tylko inna skrzynka docelowa.
+      if (!globalSettings?.ms_graph_client_id || !ch.ms_graph_mailbox) {
+        console.error(`[Graph] Kanał e-mail #${ch.id}: brak konfiguracji Microsoft Graph (aplikacja w Ustawieniach lub adres skrzynki) — pomijam`);
+        continue;
+      }
+      const channelSettings = {
+        ms_graph_client_id: globalSettings.ms_graph_client_id,
+        ms_graph_client_secret: globalSettings.ms_graph_client_secret,
+        ms_graph_tenant_id: globalSettings.ms_graph_tenant_id,
+        ms_graph_mailbox: ch.ms_graph_mailbox,
+        senderEmail: ch.ms_graph_mailbox,
+        strip_quoted_reply: globalSettings?.strip_quoted_reply,
+      };
+      try {
+        const messages = await msGraph.getUnreadMessages(channelSettings);
+        if (messages.length) {
+          console.log(`[Graph] Kanał e-mail #${ch.id}: pobrano ${messages.length} nowych wiadomości`);
+          await processGraphMessages(messages, channelSettings, channel);
+        }
+      } catch (e) {
+        console.error(`[Graph] Kanał e-mail #${ch.id}: błąd połączenia:`, e.message);
+      }
+      continue;
+    }
+
+    if (!ch.imap_server || !ch.imap_login) continue;
+    const channelSettings = {
+      imapServer: ch.imap_server,
+      imapPort: ch.imap_port,
+      imapLogin: ch.imap_login,
+      imapPassword: ch.imap_password,
+      imapPath: ch.imap_path,
+      senderEmail: ch.imap_login,
+      strip_quoted_reply: globalSettings?.strip_quoted_reply,
+    };
+    try {
+      const emails = await fetchUnseen(channelSettings);
+      if (emails.length) {
+        console.log(`[IMAP] Kanał e-mail #${ch.id}: pobrano ${emails.length} nowych wiadomości`);
+        await processEmails(emails, channelSettings, channel);
+      }
+    } catch (e) {
+      console.error(`[IMAP] Kanał e-mail #${ch.id}: błąd połączenia:`, e.message);
+    }
+  }
+}
+
 // ─── Główna funkcja poll ──────────────────────────────────────────────────────
 async function poll() {
+  let settings;
   try {
-    const settings = await getSettings();
-    if (!settings?.email_receive) return;
-
-    // Microsoft Graph
-    if (settings.ms_graph_enabled) {
-      const messages = await msGraph.getUnreadMessages(settings);
-      if (messages.length) {
-        console.log(`[Graph] Pobrano ${messages.length} nowych wiadomości`);
-        await processGraphMessages(messages, settings);
+    settings = await getSettings();
+    if (settings?.email_receive) {
+      if (settings.ms_graph_enabled) {
+        // Microsoft Graph
+        const messages = await msGraph.getUnreadMessages(settings);
+        if (messages.length) {
+          console.log(`[Graph] Pobrano ${messages.length} nowych wiadomości`);
+          await processGraphMessages(messages, settings);
+        }
+        if (settings.clean_mailbox_days > 0) {
+          await cleanOldGraphMessages(settings, settings.clean_mailbox_days);
+        }
+      } else {
+        // Tradycyjny IMAP
+        const emails = await fetchUnseen(settings);
+        if (emails.length) {
+          console.log(`[IMAP] Pobrano ${emails.length} nowych wiadomości`);
+          await processEmails(emails, settings);
+        }
+        if (settings.clean_mailbox_days > 0) {
+          await cleanOldImapMessages(settings, settings.clean_mailbox_days);
+        }
       }
-      if (settings.clean_mailbox_days > 0) {
-        await cleanOldGraphMessages(settings, settings.clean_mailbox_days);
-      }
-      return;
-    }
-
-    // Tradycyjny IMAP
-    const emails = await fetchUnseen(settings);
-    if (emails.length) {
-      console.log(`[IMAP] Pobrano ${emails.length} nowych wiadomości`);
-      await processEmails(emails, settings);
-    }
-    if (settings.clean_mailbox_days > 0) {
-      await cleanOldImapMessages(settings, settings.clean_mailbox_days);
     }
   } catch (e) {
     console.error('[IMAP] Błąd połączenia:', e.message);
   }
+
+  await pollEmailChannels(settings).catch((e) => console.error('[IMAP] Błąd kanałów e-mail:', e.message));
 }
 
 function start(intervalMs = 60000) {

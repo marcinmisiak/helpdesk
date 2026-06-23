@@ -1,6 +1,9 @@
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { Navigate } from 'react-router-dom';
 import api from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 function formatDuration(seconds) {
   if (!seconds && seconds !== 0) return '—';
@@ -26,16 +29,49 @@ function Stat({ label, value, color = 'blue' }) {
 
 export default function Statystyki() {
   const { t } = useTranslation();
-  const { data, isLoading } = useQuery({
-    queryKey: ['statystyki'],
-    queryFn: () => api.get('/statystyki').then(r => r.data),
+  const { isAdmin, kierownikZespolIds } = useAuth();
+  const [selectedZespolId, setSelectedZespolId] = useState(
+    !isAdmin && kierownikZespolIds.length ? kierownikZespolIds[0] : ''
+  );
+
+  const { data: zespoly } = useQuery({
+    queryKey: ['zespoly'],
+    queryFn: () => api.get('/zespoly').then(r => r.data.data),
   });
 
+  // Kierownik widzi tylko zespoły, którymi kieruje — bez opcji "wszystkie".
+  const myTeams = useMemo(
+    () => (zespoly || []).filter((z) => isAdmin || kierownikZespolIds.includes(z.id)),
+    [zespoly, isAdmin, kierownikZespolIds]
+  );
+
+  const zespolId = isAdmin ? selectedZespolId : (selectedZespolId || kierownikZespolIds[0]);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['statystyki', zespolId],
+    queryFn: () => api.get('/statystyki', { params: zespolId ? { zespol_id: zespolId } : {} }).then(r => r.data),
+  });
+
+  if (isError) return <Navigate to="/moje" replace />;
   if (isLoading) return <div className="text-center py-12 text-gray-500 dark:text-gray-400">{t('statistics.loading')}</div>;
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">{t('statistics.title')}</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold">{t('statistics.title')}</h2>
+        {(isAdmin || myTeams.length > 1) && (
+          <select
+            value={selectedZespolId}
+            onChange={(e) => setSelectedZespolId(e.target.value ? Number(e.target.value) : '')}
+            className="input max-w-xs"
+          >
+            {isAdmin && <option value="">{t('statistics.filter_team_all')}</option>}
+            {myTeams.map((z) => (
+              <option key={z.id} value={z.id}>{z.nazwa}</option>
+            ))}
+          </select>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Stat label={t('statistics.new')} value={data.nowe} color="blue" />

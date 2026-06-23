@@ -13,7 +13,8 @@ const { getSiteUrl } = require('../utils/siteUrl');
 const { normalizePriority, computeDeadlines, enrichTicketSla } = require('../utils/sla');
 const { classifyAndSave, generateReply } = require('../utils/groqClassifier');
 const { maybeSendCsatSurvey } = require('../utils/csat');
-const messengerClient = require('../utils/messengerClient');
+const { sendTicketReply } = require('../utils/ticketReply');
+const { sendWebhookEvent } = require('../utils/webhookClient');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 const uploadStorage = multer.diskStorage({
@@ -368,6 +369,11 @@ router.post('/', requireAdmin, async (req, res) => {
     classifyAndSave(result.insertId, { subject: message_subject, body: tresc, from: message_from }).catch(() => {});
 
     sendTicketRegisteredEmail({ numer, from: message_from, subject: message_subject }).catch(() => {});
+
+    sendWebhookEvent('ticket.created', {
+      ticket: { id: result.insertId, numer, subject: message_subject, from: message_from, priority: normalizedPriority, status: 1, zrodlo: null },
+      message: { tresc, html, from: message_from },
+    }).catch(() => {});
 
     res.status(201).json({ id: result.insertId, numer, priority: normalizedPriority });
   } catch (err) {
@@ -919,134 +925,31 @@ router.delete('/:id/autor-token', async (req, res) => {
 router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
   try {
     const { to, cc, tresc, html, zamknij, close_notify } = req.body;
-    const now = Math.floor(Date.now() / 1000);
-
-    const [ticket] = await pool.query('SELECT * FROM ticket WHERE id=?', [req.params.id]);
-    if (!ticket.length) return res.status(404).json({ error: 'Ticket nie znaleziony' });
-
-    const oldStatus = ticket[0].status;
-
-    const [kResult] = await pool.query(
-      `INSERT INTO korespondencja (ticket_id, data, created_by, updated_by, created_at, updated_at, tresc, html, message_to, message_cc, message_subject, message_from, typ, przeczytane)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [req.params.id, now, req.user.id, req.user.id, now, now, tresc, html,
-       to, cc || '', ticket[0].message_subject, req.user.email,
-       ticket[0].zrodlo === 'live_chat' ? 'chat' : (ticket[0].zrodlo === 'messenger' ? 'messenger' : 'reply')]
-    );
-
-    // upewnij się że przypisany
-    const [existing] = await pool.query(
-      'SELECT id FROM user_has_ticket WHERE ticket_id=? AND user_id=?',
-      [req.params.id, req.user.id]
-    );
-    if (!existing.length) {
-      await pool.query(
-        'INSERT INTO user_has_ticket (ticket_id, user_id, data, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [req.params.id, req.user.id, now, req.user.id, req.user.id, now, now]
-      );
-    }
-    // zawsze ustaw status=2 przy odpowiedzi (chyba że zamknięcie)
     const closing = zamknij === '1' || zamknij === true || zamknij === 1;
-    if (!closing && oldStatus !== 3) {
-      await pool.query('UPDATE ticket SET status=2 WHERE id=?', [req.params.id]);
-    }
+    const closeNotify = close_notify === '1' || close_notify === true || close_notify === 1;
 
-    try {
-      await pool.query('UPDATE ticket SET first_response_at = COALESCE(first_response_at, ?) WHERE id = ?', [now, req.params.id]);
-    } catch {
-      // Kolumna first_response_at może nie istnieć przed migracją schematu.
-    }
+    const result = await sendTicketReply(req.params.id, {
+      to,
+      cc,
+      tresc,
+      html,
+      files: req.files || [],
+      close: closing,
+      closeNotify,
+      actorUserId: req.user.id,
+      actorEmail: req.user.email,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+    });
 
-    // Zamknij ticket jeśli zaznaczono (zamknij przychodzi jako string '0'/'1' z FormData)
-    if (closing) {
-      await pool.query('UPDATE ticket SET status=3, data_zamkniecia=?, odlozony=0 WHERE id=?', [now, req.params.id]);
-      maybeSendCsatSurvey(req.params.id).catch(() => {});
-    }
-
-    const newStatus = closing ? 3 : (oldStatus !== 3 ? 2 : 3);
-    const statusChanged = oldStatus !== newStatus;
-
-    // Zapisz załączniki do DB
-    const savedFiles = [];
-    if (req.files && req.files.length) {
-      for (const file of req.files) {
-        const filepath = file.path.replace(uploadDir + '/', '');
-        const [fResult] = await pool.query(
-          'INSERT INTO plik (tabela, ticket_id, filepath, originalname) VALUES (?, ?, ?, ?)',
-          [2, kResult.insertId, filepath, file.originalname]
-        );
-        savedFiles.push({ id: fResult.insertId, filepath: file.path, originalname: file.originalname, mimetype: file.mimetype });
-      }
-    }
-
-    // wyślij email — pomijamy dla ticketów z czatu (odwiedzający nie ma adresu e-mail,
-    // odpowiedź trafia do niego przez polling widgetu, treść już zapisana w korespondencja)
-    let mailError = null;
-    if (ticket[0].zrodlo === 'messenger') {
-      try {
-        const withinWindow = ticket[0].messenger_last_user_message_at
-          && (now - ticket[0].messenger_last_user_message_at < 24 * 3600);
-        const sentId = await messengerClient.sendMessage(ticket[0].messenger_psid, tresc, withinWindow);
-        if (sentId) await pool.query('UPDATE korespondencja SET message_id = ? WHERE id = ?', [sentId, kResult.insertId]);
-      } catch (msgErr) {
-        mailError = msgErr.message;
-        await pool.query('UPDATE korespondencja SET mail_error = ? WHERE id = ?', [msgErr.message, kResult.insertId]).catch(() => {});
-      }
-    } else if (ticket[0].zrodlo !== 'live_chat') {
-    try {
-      const rawSubject = ticket[0].message_subject || '(brak tematu)';
-      const numerTag = `[#${ticket[0].numer}]`;
-      let subject = rawSubject.startsWith('Re:') ? rawSubject : `Re: ${rawSubject}`;
-      if (!subject.includes(numerTag)) subject += ` ${numerTag}`;
-
-      // Dołącz informację o zamknięciu do treści emaila (tylko jeśli close_notify=1)
-      const isClosing = zamknij === '1' || zamknij === true || zamknij === 1;
-      const includeCloseNote = isClosing && (close_notify === '1' || close_notify === true || close_notify === 1);
-      const closingNote = includeCloseNote
-        ? `<div style="margin-top:20px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:13px;color:#166534">
-             <strong>Zgłoszenie zostało zamknięte.</strong> Uznajemy sprawę za rozwiązaną. Jeżeli problem powróci lub pojawią się nowe pytania, prosimy o ponowny kontakt — chętnie pomożemy.
-           </div>`
-        : '';
-      const emailHtml = html ? `${html}${closingNote}` : null;
-      const emailTresc = includeCloseNote
-        ? `${tresc}\n\n---\nZgłoszenie zostało zamknięte. Jeżeli problem powróci, prosimy o kontakt.`
-        : tresc;
-
-      const emailAttachments = savedFiles.map(f => ({
-        filename: f.originalname,
-        path: f.filepath,
-        contentType: f.mimetype,
-      }));
-
-      console.log(`[Mail] Wysyłam odpowiedź na ticket #${ticket[0].numer} do: ${to}, temat: ${subject}, załączników: ${emailAttachments.length}`);
-      const sentMsgId = await mailer.sendReply({ to, cc, subject, html: emailHtml, tresc: emailTresc, attachments: emailAttachments });
-      console.log(`[Mail] Wysłano pomyślnie do ${to}`);
-      if (sentMsgId) {
-        await pool.query('UPDATE korespondencja SET message_id = ? WHERE id = ?', [sentMsgId, kResult.insertId]);
-      }
-    } catch (mailErr) {
-      mailError = mailErr.message;
-      console.error(`[Mail] BŁĄD wysyłki do ${to}:`, mailErr.message);
-      // Zapisz błąd trwale przy wiadomości — widoczny w wątku korespondencji
-      await pool.query('UPDATE korespondencja SET mail_error = ? WHERE id = ?', [mailErr.message, kResult.insertId]).catch(() => {});
-    }
-    }
-
-    // push do przypisanych (z wyłączeniem autora odpowiedzi)
-    const [przypisani] = await pool.query(
-      'SELECT user_id FROM user_has_ticket WHERE ticket_id = ? AND user_id != ?',
-      [req.params.id, req.user.id]
-    );
-    const idsDoNotify = przypisani.map((r) => r.user_id);
-    notifyUsers(idsDoNotify, {
-      title: `Nowa odpowiedź: ${ticket[0].message_subject}`,
-      body: `Odpowiedź od: ${req.user.imie} ${req.user.nazwisko}`,
-      url: `/tickets/${req.params.id}`,
-    }).catch(() => {});
-
-    res.json({ success: true, korespondencja_id: kResult.insertId, mailError, statusChanged, newStatus });
+    res.json({
+      success: true,
+      korespondencja_id: result.korespondencja_id,
+      mailError: result.mailError,
+      statusChanged: result.statusChanged,
+      newStatus: result.newStatus,
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -1240,6 +1143,16 @@ router.post('/:id/classify', async (req, res) => {
 router.post('/:id/nie-spam', requireAdmin, async (req, res) => {
   try {
     await pool.query("UPDATE ticket SET ai_tag = 'normalne', ai_reason = NULL WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/tickets/:id/spam — oznacz ręcznie jako spam
+router.post('/:id/spam', async (req, res) => {
+  try {
+    await pool.query("UPDATE ticket SET ai_tag = 'spam', ai_reason = ? WHERE id = ?", ['Oznaczone ręcznie jako spam', req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

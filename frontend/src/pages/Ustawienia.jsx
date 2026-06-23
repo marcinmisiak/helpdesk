@@ -844,6 +844,135 @@ function MessengerPanel({ form, set, setCheck }) {
   );
 }
 
+// ─── Panel webhooka n8n (automatyzacja odpowiedzi) ────────────────────────────
+function WebhookN8nPanel({ form, set, setCheck, setVal }) {
+  const qc = useQueryClient();
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const replyUrl = `${API_BASE}/api/webhook/n8n/reply`;
+
+  const copy = (text) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    toast.success('Skopiowano');
+  };
+
+  const testWebhook = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data } = await api.post('/ustawienia/webhook-test');
+      setTestResult({ ok: true, msg: data.message });
+    } catch (err) {
+      setTestResult({ ok: false, msg: err.response?.data?.error || 'Błąd połączenia' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const regenerateSecret = async () => {
+    if (!confirm('Wygenerować nowy sekret? Trzeba będzie zaktualizować konfigurację w n8n.')) return;
+    setRegenerating(true);
+    try {
+      const { data } = await api.post('/ustawienia/webhook-regenerate-secret');
+      toast.success('Nowy sekret wygenerowany');
+      setVal('webhook_secret')(data.webhook_secret);
+      qc.invalidateQueries(['ustawienia']);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Błąd');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  return (
+    <div className="card border-indigo-200 dark:border-indigo-800">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🤖</span>
+          <h3 className="font-semibold">n8n — automatyzacja odpowiedzi</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="webhook_enabled"
+            checked={!!form.webhook_enabled}
+            onChange={setCheck('webhook_enabled')}
+          />
+          <label htmlFor="webhook_enabled" className="text-sm font-medium">Włącz</label>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-500 mb-4">
+        Gdy włączone: helpdesk wysyła zdarzenia (nowy ticket, nowa wiadomość od klienta) na adres
+        webhooka n8n, a n8n może wywołać poniższy endpoint, aby wstawić automatyczną odpowiedź do ticketu.
+      </p>
+
+      <div className={`space-y-3 ${!form.webhook_enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div>
+          <label className="label">URL webhooka n8n (helpdesk → n8n)</label>
+          <input
+            value={form.webhook_url || ''}
+            onChange={set('webhook_url')}
+            className="input font-mono text-sm"
+            placeholder="https://n8n.twojadomena.pl/webhook/..."
+          />
+        </div>
+
+        <div className="pt-1 flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={testWebhook}
+            disabled={testing || !form.webhook_url}
+            className="btn-secondary btn-sm"
+          >
+            {testing ? 'Testowanie...' : 'Testuj webhook'}
+          </button>
+          {testResult && (
+            <span className={`text-sm ${testResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {testResult.ok ? '✓' : '✕'} {testResult.msg}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-3 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs text-indigo-800 dark:text-indigo-200">
+          <strong>Konfiguracja w n8n (n8n → helpdesk):</strong>
+          <ol className="mt-1 ml-4 list-decimal space-y-1">
+            <li>
+              URL do wywołania (HTTP Request node, metoda POST):
+              <div className="flex items-center gap-1 mt-0.5">
+                <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded break-all flex-1">{replyUrl}</code>
+                <button type="button" onClick={() => copy(replyUrl)} className="text-indigo-600 dark:text-indigo-300 hover:underline shrink-0">kopiuj</button>
+              </div>
+            </li>
+            <li>
+              Nagłówek <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded">X-Webhook-Secret</code>:
+              <div className="flex items-center gap-1 mt-0.5">
+                <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded break-all flex-1">{form.webhook_secret || '(zostanie wygenerowany po odświeżeniu)'}</code>
+                <button type="button" onClick={() => copy(form.webhook_secret)} disabled={!form.webhook_secret} className="text-indigo-600 dark:text-indigo-300 hover:underline shrink-0">kopiuj</button>
+              </div>
+            </li>
+            <li>
+              Treść JSON: <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded">{'{ ticket_numer, tresc, html?, close? }'}</code>
+              {' '}— <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded">ticket_numer</code> i treść wiadomości otrzymujesz w zdarzeniu wysłanym do n8n.
+            </li>
+          </ol>
+          <button
+            type="button"
+            onClick={regenerateSecret}
+            disabled={regenerating}
+            className="mt-2 text-indigo-700 dark:text-indigo-300 hover:underline"
+          >
+            {regenerating ? 'Generowanie...' : 'Wygeneruj nowy sekret'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Panel czyszczenia skrzynki ───────────────────────────────────────────────
 function MailboxCleanupPanel({ form, set, setCheck }) {
   const [stats, setStats] = useState(null);
@@ -1101,6 +1230,7 @@ const TABS = [
   { id: 'kategorie', label: 'Kategorie zgłoszeń' },
   { id: 'ldap', label: 'LDAP' },
   { id: 'messenger', label: 'Facebook Messenger' },
+  { id: 'n8n', label: 'n8n' },
   { id: 'inne', label: 'Inne' },
 ];
 
@@ -1128,7 +1258,7 @@ export default function Ustawienia() {
 
   if (isLoading) return <div className="text-center py-12 text-gray-500">Ładowanie...</div>;
 
-  const isFormTab = ['ogolne', 'smtp', 'imap', 'ldap', 'messenger', 'inne'].includes(activeTab);
+  const isFormTab = ['ogolne', 'smtp', 'imap', 'ldap', 'messenger', 'n8n', 'inne'].includes(activeTab);
 
   return (
     <div>
@@ -1439,6 +1569,12 @@ export default function Ustawienia() {
       {activeTab === 'messenger' && (
         <div className="space-y-4 max-w-lg">
           <MessengerPanel form={effectiveForm} set={set} setCheck={setCheck} />
+        </div>
+      )}
+
+      {activeTab === 'n8n' && (
+        <div className="space-y-4 max-w-lg">
+          <WebhookN8nPanel form={effectiveForm} set={set} setCheck={setCheck} setVal={setVal} />
         </div>
       )}
 

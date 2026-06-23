@@ -10,7 +10,9 @@ router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT z.*, GROUP_CONCAT(DISTINCT zu.user_id) as czlonkowie_ids,
-              GROUP_CONCAT(DISTINCT CONCAT(u.imie, ' ', u.nazwisko) SEPARATOR ', ') as czlonkowie
+              GROUP_CONCAT(DISTINCT CONCAT(u.imie, ' ', u.nazwisko) SEPARATOR ', ') as czlonkowie,
+              GROUP_CONCAT(DISTINCT CASE WHEN zu.is_kierownik = 1 THEN zu.user_id END) as kierownik_ids,
+              GROUP_CONCAT(DISTINCT CASE WHEN zu.is_kierownik = 1 THEN CONCAT(u.imie, ' ', u.nazwisko) END SEPARATOR ', ') as kierownicy
        FROM zespol z
        LEFT JOIN zespol_user zu ON zu.zespol_id = z.id
        LEFT JOIN user u ON u.id = zu.user_id
@@ -25,7 +27,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/zespoly
 router.post('/', requireAdmin, async (req, res) => {
-  const { nazwa, opis, user_ids } = req.body;
+  const { nazwa, opis, user_ids, kierownik_ids } = req.body;
   if (!nazwa?.trim()) return res.status(400).json({ error: 'Nazwa zespołu jest wymagana' });
 
   try {
@@ -36,8 +38,11 @@ router.post('/', requireAdmin, async (req, res) => {
     );
     const zespolId = result.insertId;
     if (Array.isArray(user_ids) && user_ids.length) {
-      const values = user_ids.map((uid) => [zespolId, uid, now]);
-      await pool.query('INSERT INTO zespol_user (zespol_id, user_id, created_at) VALUES ?', [values]);
+      // kierownik_ids spoza user_ids są ignorowane — przecięcie gwarantuje brak
+      // niespójnego stanu (kierownik bez członkostwa).
+      const kierownicy = new Set(Array.isArray(kierownik_ids) ? kierownik_ids : []);
+      const values = user_ids.map((uid) => [zespolId, uid, now, kierownicy.has(uid) ? 1 : 0]);
+      await pool.query('INSERT INTO zespol_user (zespol_id, user_id, created_at, is_kierownik) VALUES ?', [values]);
     }
     res.status(201).json({ id: zespolId });
   } catch (err) {
@@ -47,7 +52,7 @@ router.post('/', requireAdmin, async (req, res) => {
 
 // PUT /api/zespoly/:id
 router.put('/:id', requireAdmin, async (req, res) => {
-  const { nazwa, opis, user_ids } = req.body;
+  const { nazwa, opis, user_ids, kierownik_ids } = req.body;
   if (nazwa !== undefined && !nazwa?.trim()) {
     return res.status(400).json({ error: 'Nazwa nie może być pusta' });
   }
@@ -66,8 +71,11 @@ router.put('/:id', requireAdmin, async (req, res) => {
     if (Array.isArray(user_ids)) {
       await pool.query('DELETE FROM zespol_user WHERE zespol_id = ?', [req.params.id]);
       if (user_ids.length) {
-        const memberValues = user_ids.map((uid) => [req.params.id, uid, now]);
-        await pool.query('INSERT INTO zespol_user (zespol_id, user_id, created_at) VALUES ?', [memberValues]);
+        // kierownik_ids spoza user_ids są ignorowane — przecięcie gwarantuje brak
+        // niespójnego stanu (kierownik bez członkostwa).
+        const kierownicy = new Set(Array.isArray(kierownik_ids) ? kierownik_ids : []);
+        const memberValues = user_ids.map((uid) => [req.params.id, uid, now, kierownicy.has(uid) ? 1 : 0]);
+        await pool.query('INSERT INTO zespol_user (zespol_id, user_id, created_at, is_kierownik) VALUES ?', [memberValues]);
       }
     }
     res.json({ success: true });

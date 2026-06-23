@@ -43,7 +43,7 @@ function UserAvatar({ imie, nazwisko }) {
 
 export default function Layout({ children }) {
   const { t, i18n } = useTranslation();
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isKierownik } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -181,8 +181,11 @@ export default function Layout({ children }) {
     { to: '/odlozone', label: t('nav.deferred'), icon: '⏸️', badge: counts?.odlozone },
     { to: '/kalendarz', label: t('nav.calendar'), icon: '📅' },
     { to: '/zespoly', label: t('nav.teams'), icon: '👨‍👩‍👧' },
-    ...(isAdmin ? [
+    ...(isAdmin || isKierownik ? [
       { to: '/statystyki', label: t('nav.statistics'), icon: '📊' },
+      { to: '/opinie', label: t('nav.opinie'), icon: '⭐' },
+    ] : []),
+    ...(isAdmin ? [
       { to: '/uzytkownicy', label: t('nav.users'), icon: '👥' },
       { to: '/kanaly-czatu', label: t('nav.chat_channels'), icon: '🔌' },
       { to: '/szablony', label: t('nav.templates'), icon: '📝' },

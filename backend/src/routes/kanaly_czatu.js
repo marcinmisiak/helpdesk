@@ -6,6 +6,8 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 router.use(authenticate);
 
+const TYPY = ['chat', 'email'];
+
 // GET /api/kanaly-czatu — dostępne dla każdego zalogowanego
 router.get('/', async (req, res) => {
   try {
@@ -15,6 +17,7 @@ router.get('/', async (req, res) => {
        LEFT JOIN zespol z ON z.id = k.zespol_id
        ORDER BY k.nazwa ASC`
     );
+    rows.forEach((r) => { delete r.imap_password; });
     res.json({ data: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -23,16 +26,28 @@ router.get('/', async (req, res) => {
 
 // POST /api/kanaly-czatu
 router.post('/', requireAdmin, async (req, res) => {
-  const { nazwa, zespol_id, dozwolone_domeny, powitanie } = req.body;
+  const {
+    nazwa, zespol_id, typ, dozwolone_domeny, powitanie,
+    imap_server, imap_port, imap_login, imap_password, imap_path,
+    ms_graph_enabled, ms_graph_mailbox,
+  } = req.body;
   if (!nazwa?.trim()) return res.status(400).json({ error: 'Nazwa kanału jest wymagana' });
   if (!zespol_id) return res.status(400).json({ error: 'Wybierz zespół docelowy' });
+  if (typ !== undefined && !TYPY.includes(typ)) return res.status(400).json({ error: 'Nieprawidłowy typ kanału' });
 
   try {
     const now = Math.floor(Date.now() / 1000);
     const channelKey = crypto.randomUUID();
     const [result] = await pool.query(
-      'INSERT INTO kanal_czatu (channel_key, nazwa, zespol_id, dozwolone_domeny, powitanie, aktywny, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
-      [channelKey, nazwa.trim(), zespol_id, dozwolone_domeny?.trim() || null, powitanie?.trim() || null, now, now]
+      `INSERT INTO kanal_czatu
+         (channel_key, nazwa, zespol_id, typ, dozwolone_domeny, powitanie,
+          imap_server, imap_port, imap_login, imap_password, imap_path,
+          ms_graph_enabled, ms_graph_mailbox, aktywny, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [channelKey, nazwa.trim(), zespol_id, typ || 'chat', dozwolone_domeny?.trim() || null, powitanie?.trim() || null,
+       imap_server?.trim() || null, imap_port || null, imap_login?.trim() || null, imap_password || null, imap_path?.trim() || null,
+       ms_graph_enabled ? 1 : 0, ms_graph_mailbox?.trim() || null,
+       now, now]
     );
     res.status(201).json({ id: result.insertId, channel_key: channelKey });
   } catch (err) {
@@ -42,10 +57,15 @@ router.post('/', requireAdmin, async (req, res) => {
 
 // PUT /api/kanaly-czatu/:id
 router.put('/:id', requireAdmin, async (req, res) => {
-  const { nazwa, zespol_id, dozwolone_domeny, powitanie, aktywny } = req.body;
+  const {
+    nazwa, zespol_id, typ, dozwolone_domeny, powitanie, aktywny,
+    imap_server, imap_port, imap_login, imap_password, imap_path,
+    ms_graph_enabled, ms_graph_mailbox,
+  } = req.body;
   if (nazwa !== undefined && !nazwa?.trim()) {
     return res.status(400).json({ error: 'Nazwa nie może być pusta' });
   }
+  if (typ !== undefined && !TYPY.includes(typ)) return res.status(400).json({ error: 'Nieprawidłowy typ kanału' });
 
   try {
     const now = Math.floor(Date.now() / 1000);
@@ -54,9 +74,19 @@ router.put('/:id', requireAdmin, async (req, res) => {
 
     if (nazwa !== undefined) { updates.push('nazwa = ?'); values.push(nazwa.trim()); }
     if (zespol_id !== undefined) { updates.push('zespol_id = ?'); values.push(zespol_id); }
+    if (typ !== undefined) { updates.push('typ = ?'); values.push(typ); }
     if (dozwolone_domeny !== undefined) { updates.push('dozwolone_domeny = ?'); values.push(dozwolone_domeny?.trim() || null); }
     if (powitanie !== undefined) { updates.push('powitanie = ?'); values.push(powitanie?.trim() || null); }
     if (aktywny !== undefined) { updates.push('aktywny = ?'); values.push(aktywny ? 1 : 0); }
+    if (imap_server !== undefined) { updates.push('imap_server = ?'); values.push(imap_server?.trim() || null); }
+    if (imap_port !== undefined) { updates.push('imap_port = ?'); values.push(imap_port || null); }
+    if (imap_login !== undefined) { updates.push('imap_login = ?'); values.push(imap_login?.trim() || null); }
+    // imap_password: aktualizowany tylko gdy faktycznie przyszedł w body — front nie wysyła
+    // go, jeśli admin nie wpisał nowej wartości (GET nigdy nie zwraca prawdziwego hasła).
+    if (imap_password) { updates.push('imap_password = ?'); values.push(imap_password); }
+    if (imap_path !== undefined) { updates.push('imap_path = ?'); values.push(imap_path?.trim() || null); }
+    if (ms_graph_enabled !== undefined) { updates.push('ms_graph_enabled = ?'); values.push(ms_graph_enabled ? 1 : 0); }
+    if (ms_graph_mailbox !== undefined) { updates.push('ms_graph_mailbox = ?'); values.push(ms_graph_mailbox?.trim() || null); }
 
     values.push(req.params.id);
     await pool.query(`UPDATE kanal_czatu SET ${updates.join(', ')} WHERE id = ?`, values);

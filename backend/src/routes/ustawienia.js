@@ -85,6 +85,14 @@ router.get('/', requireAdmin, async (req, res) => {
       row.messenger_verify_token = verifyToken;
     }
 
+    // Sekret webhooka n8n — w przeciwieństwie do messenger_app_secret admin musi go
+    // widzieć i wkleić do n8n (jako nagłówek X-Webhook-Secret), więc nie jest maskowany.
+    if (!row.webhook_secret) {
+      const webhookSecret = crypto.randomBytes(24).toString('hex');
+      await pool.query('UPDATE ustawienia SET webhook_secret = ? WHERE id = 1', [webhookSecret]);
+      row.webhook_secret = webhookSecret;
+    }
+
     const safe = { ...row };
     delete safe.password;
     delete safe.imapPassword;
@@ -137,6 +145,8 @@ router.put('/', requireAdmin, async (req, res) => {
       // Facebook Messenger
       'messenger_enabled', 'messenger_page_id', 'messenger_page_access_token',
       'messenger_app_secret', 'messenger_zespol_id',
+      // Webhook n8n (automatyzacja)
+      'webhook_enabled', 'webhook_url',
     ];
     const updates = [];
     const values = [];
@@ -230,6 +240,32 @@ router.post('/ms-graph-test', requireAdmin, async (req, res) => {
     });
   } catch (err) {
     res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/ustawienia/webhook-regenerate-secret — wygeneruj nowy sekret webhooka n8n
+router.post('/webhook-regenerate-secret', requireAdmin, async (req, res) => {
+  try {
+    const webhookSecret = crypto.randomBytes(24).toString('hex');
+    await pool.query('UPDATE ustawienia SET webhook_secret = ? WHERE id = 1', [webhookSecret]);
+    res.json({ webhook_secret: webhookSecret });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ustawienia/webhook-test — wyślij testowe zdarzenie na webhook_url
+router.post('/webhook-test', requireAdmin, async (req, res) => {
+  try {
+    const [[settings]] = await pool.query('SELECT webhook_enabled, webhook_url FROM ustawienia WHERE id = 1');
+    if (!settings?.webhook_enabled) return res.status(400).json({ error: 'Webhook nie jest włączony.' });
+    if (!settings.webhook_url) return res.status(400).json({ error: 'Brak skonfigurowanego URL webhooka.' });
+
+    const { sendWebhookEvent } = require('../utils/webhookClient');
+    await sendWebhookEvent('test', { message: 'Test webhooka z panelu helpdesk' });
+    res.json({ success: true, message: `Wysłano testowe zdarzenie na ${settings.webhook_url}` });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

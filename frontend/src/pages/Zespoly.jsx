@@ -11,6 +11,7 @@ function TeamModal({ team, users, onClose, onSuccess }) {
     nazwa: team?.nazwa || '',
     opis: team?.opis || '',
     user_ids: team?.czlonkowie_ids ? team.czlonkowie_ids.split(',').map(Number) : [],
+    kierownik_ids: team?.kierownik_ids ? team.kierownik_ids.split(',').map(Number) : [],
   });
 
   const isEdit = !!team;
@@ -19,6 +20,15 @@ function TeamModal({ team, users, onClose, onSuccess }) {
     setForm((f) => ({
       ...f,
       user_ids: f.user_ids.includes(id) ? f.user_ids.filter((x) => x !== id) : [...f.user_ids, id],
+      // Usunięcie z zespołu automatycznie zdejmuje też flagę kierownika.
+      kierownik_ids: f.user_ids.includes(id) ? f.kierownik_ids.filter((x) => x !== id) : f.kierownik_ids,
+    }));
+  };
+
+  const toggleKierownik = (id) => {
+    setForm((f) => ({
+      ...f,
+      kierownik_ids: f.kierownik_ids.includes(id) ? f.kierownik_ids.filter((x) => x !== id) : [...f.kierownik_ids, id],
     }));
   };
 
@@ -61,14 +71,28 @@ function TeamModal({ team, users, onClose, onSuccess }) {
             <label className="label">{t('teams.field_members')}</label>
             <div className="border rounded max-h-56 overflow-y-auto dark:border-gray-700">
               {workers.map((u) => (
-                <label key={u.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={form.user_ids.includes(u.id)}
-                    onChange={() => toggleMember(u.id)}
-                  />
-                  {u.imie} {u.nazwisko} ({u.email})
-                </label>
+                <div key={u.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.user_ids.includes(u.id)}
+                      onChange={() => toggleMember(u.id)}
+                    />
+                    {u.imie} {u.nazwisko} ({u.email})
+                  </label>
+                  <label
+                    className={`flex items-center gap-1 text-xs cursor-pointer ${!form.user_ids.includes(u.id) ? 'opacity-40 pointer-events-none' : ''}`}
+                    title={t('teams.field_manager_hint')}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={!form.user_ids.includes(u.id)}
+                      checked={form.kierownik_ids.includes(u.id)}
+                      onChange={() => toggleKierownik(u.id)}
+                    />
+                    {t('teams.field_manager')}
+                  </label>
+                </div>
               ))}
             </div>
           </div>
@@ -162,6 +186,7 @@ export default function Zespoly() {
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('teams.col_name')}</th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('teams.col_members')}</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('teams.col_manager')}</th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('teams.col_actions')}</th>
               </tr>
             </thead>
@@ -170,6 +195,7 @@ export default function Zespoly() {
                 <tr key={z.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="px-3 py-2 font-medium">{z.nazwa}</td>
                   <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{z.czlonkowie || t('teams.no_members')}</td>
+                  <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{z.kierownicy || '—'}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {isWorker && (
                       <button

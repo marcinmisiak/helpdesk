@@ -17,6 +17,7 @@ import MojeTickety from './pages/MojeTickety';
 import Odlozone from './pages/Odlozone';
 import Kalendarz from './pages/Kalendarz';
 import Statystyki from './pages/Statystyki';
+import Opinie from './pages/Opinie';
 import Uzytkownicy from './pages/Uzytkownicy';
 import Szablony from './pages/Szablony';
 import Zespoly from './pages/Zespoly';
@@ -94,8 +95,13 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       <Route path="/statystyki" element={
-        <ProtectedRoute adminOnly>
+        <ProtectedRoute kierownikOrAdmin>
           <Layout><Statystyki /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/opinie" element={
+        <ProtectedRoute kierownikOrAdmin>
+          <Layout><Opinie /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/uzytkownicy" element={

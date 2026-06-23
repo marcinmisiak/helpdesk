@@ -7,6 +7,8 @@ const { notifyUsers } = require('../utils/webpush');
 const { normalizePriority, computeDeadlines } = require('../utils/sla');
 const { getSiteUrl } = require('../utils/siteUrl');
 const { classifyAndSave } = require('../utils/groqClassifier');
+const { sendWebhookEvent } = require('../utils/webhookClient');
+const { verifyChallenge } = require('../utils/mathCaptcha');
 
 const MAX_MESSAGE_LENGTH = 4000;
 
@@ -19,12 +21,18 @@ const startLimiter = rateLimit({
   message: { error: 'Zbyt wiele rozmów. Spróbuj ponownie za 15 minut.' },
 });
 
+// Klucz per token rozmowy, nie per IP — wiele równoległych rozmów z tego samego adresu
+// (NAT/sieć szkolna, kilka otwartych zakładek) inaczej dzieliłoby jeden wspólny limit
+// i wywalało 429 mimo że żadna pojedyncza rozmowa nie przekracza swojego budżetu.
+const byToken = (req) => req.params.token;
+
 // Odpytywanie o nowe wiadomości — częste, musi być liberalne (polling co ~4s)
 const pollLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: byToken,
   message: { error: 'Zbyt wiele zapytań. Spróbuj ponownie za chwilę.' },
 });
 
@@ -34,26 +42,41 @@ const messageLimiter = rateLimit({
   max: 40,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: byToken,
   message: { error: 'Zbyt wiele wiadomości. Zwolnij tempo.' },
 });
 
+// Widget osadza się jako iframe wskazujący na własną domenę helpdesku (zarówno w trybie
+// bubble z widget.js, jak i w trybie czystego <iframe>), więc Origin/Referer żądania API
+// to zawsze ten serwer, nigdy strona klienta. Prawdziwy adres strony, na której wstawiono
+// widget, dociera tylko jako document.referrer przechwycony w iframe'ie i przekazany przez
+// frontend w body (parent_url). To "miękka" weryfikacja — bot strzelający bezpośrednio w
+// API może to podstawić — ale chroni przed przekopiowaniem cudzego embed snippetu na inną stronę.
 function domainAllowed(dozwoloneDomeny, req) {
   if (!dozwoloneDomeny?.trim()) return true;
   const allowed = dozwoloneDomeny.split('\n').map((d) => d.trim().toLowerCase()).filter(Boolean);
-  const origin = (req.headers.origin || req.headers.referer || '').toLowerCase();
-  if (!origin) return true; // brak nagłówka — nie blokujemy (np. testy lokalne)
+  const origin = (req.body?.parent_url || req.headers.origin || req.headers.referer || '').toLowerCase();
+  if (!origin) return true; // brak danych — nie blokujemy (np. testy lokalne, dostęp poza iframe)
   return allowed.some((d) => origin.includes(d));
 }
 
 // POST /api/chat/start — rozpoczęcie nowej rozmowy z widgetu, tworzy ticket
 router.post('/start', startLimiter, async (req, res) => {
-  const { channel_key, imie, email, tresc, website } = req.body;
+  const { channel_key, imie, email, tresc, website, captchaId, captchaAnswer } = req.body;
   // Honeypot — pole niewidoczne dla ludzi w formularzu, wypełniane tylko przez boty.
   if (website) return res.status(400).json({ error: 'Nieprawidłowe zgłoszenie.' });
   if (!channel_key) return res.status(400).json({ error: 'Brak kanału.' });
   if (!imie?.trim() || imie.trim().length > 150) return res.status(400).json({ error: 'Podaj imię.' });
   if (!tresc?.trim() || tresc.trim().length < 2) return res.status(400).json({ error: 'Wiadomość jest za krótka.' });
   if (tresc.trim().length > MAX_MESSAGE_LENGTH) return res.status(400).json({ error: 'Wiadomość jest za długa.' });
+
+  const captchaResult = verifyChallenge(captchaId, captchaAnswer);
+  if (captchaResult === 'expired') {
+    return res.status(400).json({ error: 'Captcha wygasła. Odśwież stronę i spróbuj ponownie.' });
+  }
+  if (captchaResult === 'wrong') {
+    return res.status(400).json({ error: 'Nieprawidłowa odpowiedź captcha.' });
+  }
 
   try {
     const [[kanal]] = await pool.query(
@@ -113,6 +136,11 @@ router.post('/start', startLimiter, async (req, res) => {
       subject: 'Rozmowa na czacie',
       body: tresc.trim(),
       from: messageFrom,
+    }).catch(() => {});
+
+    sendWebhookEvent('ticket.created', {
+      ticket: { id: ticketId, numer, subject: 'Rozmowa na czacie', from: messageFrom, priority, status: 2, zrodlo: 'live_chat' },
+      message: { tresc: tresc.trim(), html: null, from: messageFrom },
     }).catch(() => {});
 
     res.status(201).json({ token: autorToken, numer });
@@ -190,7 +218,7 @@ router.post('/:token/message', messageLimiter, async (req, res) => {
 
   try {
     const [[ticket]] = await pool.query(
-      'SELECT id, status, message_from FROM ticket WHERE autor_token = ? AND zrodlo = \'live_chat\'',
+      'SELECT id, numer, message_subject, status, message_from FROM ticket WHERE autor_token = ? AND zrodlo = \'live_chat\'',
       [token]
     );
     if (!ticket) return res.status(404).json({ error: 'Rozmowa nie została znaleziona.' });
@@ -224,6 +252,11 @@ router.post('/:token/message', messageLimiter, async (req, res) => {
         url: `/czaty/${ticket.id}`,
       }).catch(() => {});
     }
+
+    sendWebhookEvent('ticket.message.received', {
+      ticket: { id: ticket.id, numer: ticket.numer, subject: ticket.message_subject, status: wasClosed ? 2 : ticket.status, zrodlo: 'live_chat' },
+      message: { tresc: tresc.trim(), html: null, from: ticket.message_from },
+    }).catch(() => {});
 
     res.json({ success: true });
   } catch (err) {

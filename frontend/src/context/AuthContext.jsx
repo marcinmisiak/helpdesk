@@ -34,9 +34,11 @@ export function AuthProvider({ children }) {
 
   const isAdmin = user?.rola === 'admin';
   const isWorker = ['admin', 'pracownik'].includes(user?.rola);
+  const kierownikZespolIds = user?.kierownik_zespol_ids || [];
+  const isKierownik = kierownikZespolIds.length > 0;
 
   return (
-    <AuthContext.Provider value={{ user, login, loginWithToken, logout, isAdmin, isWorker }}>
+    <AuthContext.Provider value={{ user, login, loginWithToken, logout, isAdmin, isWorker, isKierownik, kierownikZespolIds }}>
       {children}
     </AuthContext.Provider>
   );

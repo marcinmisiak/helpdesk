@@ -35,6 +35,7 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/pliki', require('./routes/pliki'));
 app.use('/api/ustawienia', require('./routes/ustawienia'));
 app.use('/api/statystyki', require('./routes/statystyki'));
+app.use('/api/opinie', require('./routes/opinie'));
 app.use('/api/alerts', require('./routes/alerts'));
 app.use('/api/push', require('./routes/push'));
 app.use('/api/docs', require('./routes/docs'));
@@ -46,6 +47,7 @@ app.use('/api/zespoly', require('./routes/zespoly'));
 app.use('/api/kanaly-czatu', require('./routes/kanaly_czatu'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/messenger', require('./routes/messenger'));
+app.use('/api/webhook/n8n', require('./routes/webhookN8n'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

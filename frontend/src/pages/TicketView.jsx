@@ -859,6 +859,21 @@ export default function TicketView() {
               >
                 {t('ticket_view.reclassify')}
               </button>
+              {ticket.ai_tag === 'spam' ? (
+                <button
+                  onClick={() => api.post(`/tickets/${ticket.id}/nie-spam`).then(() => { toast.success(t('ticket_view.toast_unmark_spam_success')); qc.invalidateQueries(['ticket', ticket.id]); }).catch(() => toast.error(t('ticket_view.toast_unmark_spam_error')))}
+                  className="text-xs text-blue-600 dark:text-blue-300 hover:underline ml-1"
+                >
+                  {t('ticket_view.unmark_spam')}
+                </button>
+              ) : (
+                <button
+                  onClick={() => api.post(`/tickets/${ticket.id}/spam`).then(() => { toast.success(t('ticket_view.toast_mark_spam_success')); qc.invalidateQueries(['ticket', ticket.id]); }).catch(() => toast.error(t('ticket_view.toast_mark_spam_error')))}
+                  className="text-xs text-red-600 dark:text-red-300 hover:underline ml-1"
+                >
+                  {t('ticket_view.mark_spam')}
+                </button>
+              )}
             </dd>
           </div>
           {ticket.message_cc && <div><dt className="label">CC</dt><dd className="text-gray-700 dark:text-gray-200">{ticket.message_cc}</dd></div>}
@@ -1068,6 +1083,13 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
       headerBg: 'bg-teal-50 dark:bg-teal-900/20',
       border: 'border-teal-200 dark:border-teal-700',
       badge: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300',
+    },
+    n8n: {
+      icon: '🤖',
+      label: t('ticket_view.typ_n8n'),
+      headerBg: 'bg-indigo-50 dark:bg-indigo-900/20',
+      border: 'border-indigo-200 dark:border-indigo-700',
+      badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300',
     },
   };
 

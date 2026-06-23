@@ -6,6 +6,7 @@ const { notifyUsers, notifyAllAdmins } = require('../utils/webpush');
 const { normalizePriority, computeDeadlines } = require('../utils/sla');
 const { classifyAndSave } = require('../utils/groqClassifier');
 const messengerClient = require('../utils/messengerClient');
+const { sendWebhookEvent } = require('../utils/webhookClient');
 
 function escapeHtml(s) {
   return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -45,7 +46,7 @@ async function handleIncomingMessage(settings, evt) {
   const now = Math.floor(Date.now() / 1000);
 
   const [[existing]] = await pool.query(
-    'SELECT id, status FROM ticket WHERE messenger_psid = ? ORDER BY id DESC LIMIT 1',
+    'SELECT id, numer, message_subject, message_from, status FROM ticket WHERE messenger_psid = ? ORDER BY id DESC LIMIT 1',
     [psid]
   );
 
@@ -61,6 +62,11 @@ async function handleIncomingMessage(settings, evt) {
        VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, '', '', 'Messenger', 'messenger', 0)`,
       [existing.id, now, now, now, fullText, `<p style="white-space:pre-wrap">${escapeHtml(fullText)}</p>`]
     );
+
+    sendWebhookEvent('ticket.message.received', {
+      ticket: { id: existing.id, numer: existing.numer, subject: existing.message_subject, from: existing.message_from, status: existing.status, zrodlo: 'messenger' },
+      message: { tresc: fullText, html: null, from: 'Messenger' },
+    }).catch(() => {});
 
     if (wasClosed) {
       const [recipients] = await pool.query(
@@ -115,6 +121,11 @@ async function handleIncomingMessage(settings, evt) {
     subject: 'Wiadomość z Messengera',
     body: fullText,
     from: displayName,
+  }).catch(() => {});
+
+  sendWebhookEvent('ticket.created', {
+    ticket: { id: ticketId, numer, subject: 'Wiadomość z Messengera', from: displayName, priority, status: 2, zrodlo: 'messenger' },
+    message: { tresc: fullText, html: null, from: displayName },
   }).catch(() => {});
 }
 

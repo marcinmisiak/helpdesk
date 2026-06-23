@@ -9,8 +9,16 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
   const [form, setForm] = useState({
     nazwa: channel?.nazwa || '',
     zespol_id: channel?.zespol_id || '',
+    typ: channel?.typ || 'chat',
     dozwolone_domeny: channel?.dozwolone_domeny || '',
     powitanie: channel?.powitanie || '',
+    imap_server: channel?.imap_server || '',
+    imap_port: channel?.imap_port || '',
+    imap_login: channel?.imap_login || '',
+    imap_password: '',
+    imap_path: channel?.imap_path || '',
+    ms_graph_enabled: !!channel?.ms_graph_enabled,
+    ms_graph_mailbox: channel?.ms_graph_mailbox || '',
   });
 
   const isEdit = !!channel;
@@ -57,20 +65,76 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
             </select>
           </div>
           <div>
-            <label className="label">{t('chat_channels.field_domains')}</label>
-            <textarea
-              value={form.dozwolone_domeny}
-              onChange={set('dozwolone_domeny')}
-              rows={3}
-              placeholder={t('chat_channels.field_domains_placeholder')}
-              className="input resize-y"
-            />
-            <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_domains_hint')}</p>
+            <label className="label">{t('chat_channels.field_type')}</label>
+            <select value={form.typ} onChange={set('typ')} className="input">
+              <option value="chat">{t('chat_channels.field_type_chat')}</option>
+              <option value="email">{t('chat_channels.field_type_email')}</option>
+            </select>
           </div>
-          <div>
-            <label className="label">{t('chat_channels.field_welcome')}</label>
-            <input value={form.powitanie} onChange={set('powitanie')} className="input" />
-          </div>
+          {form.typ === 'chat' ? (
+            <>
+              <div>
+                <label className="label">{t('chat_channels.field_domains')}</label>
+                <textarea
+                  value={form.dozwolone_domeny}
+                  onChange={set('dozwolone_domeny')}
+                  rows={3}
+                  placeholder={t('chat_channels.field_domains_placeholder')}
+                  className="input resize-y"
+                />
+                <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_domains_hint')}</p>
+              </div>
+              <div>
+                <label className="label">{t('chat_channels.field_welcome')}</label>
+                <input value={form.powitanie} onChange={set('powitanie')} className="input" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="label">{t('chat_channels.field_connection')}</label>
+                <select
+                  value={form.ms_graph_enabled ? 'graph' : 'imap'}
+                  onChange={(e) => setForm((f) => ({ ...f, ms_graph_enabled: e.target.value === 'graph' }))}
+                  className="input"
+                >
+                  <option value="imap">{t('chat_channels.field_connection_imap')}</option>
+                  <option value="graph">{t('chat_channels.field_connection_graph')}</option>
+                </select>
+              </div>
+              {form.ms_graph_enabled ? (
+                <div>
+                  <label className="label">{t('chat_channels.field_ms_graph_mailbox')}</label>
+                  <input value={form.ms_graph_mailbox} onChange={set('ms_graph_mailbox')} className="input" placeholder="it@example.com" />
+                  <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_ms_graph_mailbox_hint')}</p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="label">{t('chat_channels.field_imap_server')}</label>
+                    <input value={form.imap_server} onChange={set('imap_server')} className="input" placeholder="imap.example.com" />
+                  </div>
+                  <div>
+                    <label className="label">{t('chat_channels.field_imap_port')}</label>
+                    <input type="number" value={form.imap_port} onChange={set('imap_port')} className="input" placeholder="993" />
+                  </div>
+                  <div>
+                    <label className="label">{t('chat_channels.field_imap_login')}</label>
+                    <input value={form.imap_login} onChange={set('imap_login')} className="input" />
+                  </div>
+                  <div>
+                    <label className="label">{t('chat_channels.field_imap_password')}</label>
+                    <input type="password" value={form.imap_password} onChange={set('imap_password')} className="input" />
+                    <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_imap_password_hint')}</p>
+                  </div>
+                  <div>
+                    <label className="label">{t('chat_channels.field_imap_path')}</label>
+                    <input value={form.imap_path} onChange={set('imap_path')} className="input" placeholder="INBOX" />
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-4 py-3 border-t dark:border-gray-700">
           <button onClick={onClose} className="btn-secondary">{t('chat_channels.cancel')}</button>
@@ -191,6 +255,7 @@ export default function KanalyCzatu() {
             <thead className="bg-gray-50 border-b dark:bg-gray-800 dark:border-gray-700">
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('chat_channels.col_name')}</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('chat_channels.col_type')}</th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('chat_channels.col_team')}</th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('chat_channels.col_actions')}</th>
               </tr>
@@ -199,9 +264,14 @@ export default function KanalyCzatu() {
               {filtered.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="px-3 py-2 font-medium">{c.nazwa}</td>
+                  <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
+                    {c.typ === 'email' ? `✉️ ${t('chat_channels.field_type_email')}` : `💬 ${t('chat_channels.field_type_chat')}`}
+                  </td>
                   <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{c.zespol_nazwa || '—'}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <button onClick={() => setEmbedModal(c)} className="btn-secondary btn-sm mr-2">{t('chat_channels.embed_btn')}</button>
+                    {c.typ !== 'email' && (
+                      <button onClick={() => setEmbedModal(c)} className="btn-secondary btn-sm mr-2">{t('chat_channels.embed_btn')}</button>
+                    )}
                     <button onClick={() => setModal(c)} className="btn-secondary btn-sm mr-2">{t('chat_channels.edit')}</button>
                     <button onClick={() => remove(c)} className="btn-danger btn-sm">{t('chat_channels.delete')}</button>
                   </td>

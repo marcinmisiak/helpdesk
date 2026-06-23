@@ -28,6 +28,8 @@ export default function ChatWidget() {
   const [firstMessage, setFirstMessage] = useState('');
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [captcha, setCaptcha] = useState(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
 
   const [status, setStatus] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -49,6 +51,20 @@ export default function ChatWidget() {
     // pola formularza (czarny tekst na czarnym tle) mimo jawnych kolorów w klasach Tailwind.
     document.documentElement.style.colorScheme = 'light';
   }, []);
+
+  const refreshCaptcha = useCallback(() => {
+    pub.get('/public/captcha').then((r) => {
+      setCaptcha(r.data);
+      setCaptchaAnswer('');
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    // Zależność na token (nie tylko montowanie): fetchMessages() poniżej czyści token w
+    // trakcie sesji, gdy zapisana rozmowa przestaje być ważna, i formularz startowy wraca
+    // na ekran — wtedy potrzebne jest nowe wyzwanie, inaczej captcha zostaje null na zawsze.
+    if (!token) refreshCaptcha();
+  }, [token, refreshCaptcha]);
 
   const fetchMessages = useCallback(async () => {
     if (!token) return;
@@ -84,6 +100,7 @@ export default function ChatWidget() {
   const startChat = async () => {
     if (!imie.trim()) return setError(t('chat_widget.error_no_name'));
     if (!firstMessage.trim()) return setError(t('chat_widget.error_no_message'));
+    if (!captcha) return setError(t('chat_widget.error_default'));
     setStarting(true);
     setError('');
     try {
@@ -93,11 +110,15 @@ export default function ChatWidget() {
         email: email.trim() || undefined,
         tresc: firstMessage.trim(),
         website,
+        parent_url: document.referrer || undefined,
+        captchaId: captcha.id,
+        captchaAnswer,
       });
       localStorage.setItem(storageKey, data.token);
       setToken(data.token);
     } catch (err) {
       setError(err.response?.data?.error || t('chat_widget.error_default'));
+      refreshCaptcha();
     } finally {
       setStarting(false);
     }
@@ -162,10 +183,33 @@ export default function ChatWidget() {
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white text-black"
             />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('chat_widget.captcha_label')}</label>
+            <div className="flex items-center gap-2">
+              <div className="flex-shrink-0 bg-gray-100 border border-gray-300 rounded px-3 py-2 font-mono text-sm font-bold text-gray-800 select-none">
+                {captcha ? `${captcha.question} = ?` : '...'}
+              </div>
+              <input
+                type="number"
+                value={captchaAnswer}
+                onChange={(e) => setCaptchaAnswer(e.target.value)}
+                className="w-20 border border-gray-300 rounded px-3 py-2 text-sm bg-white text-black"
+                placeholder="?"
+              />
+              <button
+                type="button"
+                onClick={refreshCaptcha}
+                className="text-xs text-blue-600 hover:underline flex-shrink-0"
+              >
+                ↻ {t('common.refresh')}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">{t('chat_widget.captcha_hint')}</p>
+          </div>
           {error && <p className="text-red-600 text-xs">{error}</p>}
           <button
             onClick={startChat}
-            disabled={starting}
+            disabled={starting || !captcha}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded py-2 text-sm font-medium disabled:opacity-50"
           >
             {starting ? t('chat_widget.starting') : t('chat_widget.start_button')}

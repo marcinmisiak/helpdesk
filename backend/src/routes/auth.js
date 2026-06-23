@@ -78,7 +78,8 @@ router.post('/login', loginLimiter, async (req, res) => {
     const [rows] = await pool.query(
       `SELECT u.id, u.email, u.password, u.imie, u.nazwisko, u.status,
               u.powiadom_nowy_ticket, u.powiadom_korespondencja,
-              aa.item_name as rola
+              aa.item_name as rola,
+              (SELECT GROUP_CONCAT(zespol_id) FROM zespol_user WHERE user_id = u.id AND is_kierownik = 1) as kierownik_zespol_ids_raw
        FROM user u
        LEFT JOIN auth_assignment aa ON aa.user_id = u.id
        WHERE u.email = ?`,
@@ -124,6 +125,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         rola: user.rola,
         powiadom_nowy_ticket: user.powiadom_nowy_ticket,
         powiadom_korespondencja: user.powiadom_korespondencja,
+        kierownik_zespol_ids: user.kierownik_zespol_ids_raw ? user.kierownik_zespol_ids_raw.split(',').map(Number) : [],
       },
     });
   } catch (err) {
