@@ -335,7 +335,7 @@ router.get('/status/:token', statusLimiter, async (req, res) => {
 
     const [korespondencja] = await pool.query(
       `SELECT k.id, k.data, k.tresc, k.html, k.message_from, k.message_to, k.typ,
-              u.imie, u.nazwisko
+              u.imie, u.nazwisko, u.avatar_path
        FROM korespondencja k
        LEFT JOIN user u ON u.id = k.created_by
        WHERE k.ticket_id = ?
@@ -365,7 +365,10 @@ router.get('/status/:token', statusLimiter, async (req, res) => {
         tresc: k.tresc,
         html: k.html,
         od: k.imie ? `${k.imie} ${k.nazwisko}` : null,
+        imie: k.imie || null,
+        nazwisko: k.imie ? k.nazwisko : null,
         jest_od_pracownika: !!k.imie,
+        avatar_path: k.imie ? k.avatar_path : null,
         typ: k.typ || null,
       })),
       pliki: pliki.map(p => ({ id: p.id, originalname: p.originalname })),

@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import SLABadge from '../components/SLABadge';
 import PrzydielModal from '../components/PrzydielModal';
 import LdapPanel from '../components/LdapPanel';
+import Avatar from '../components/Avatar';
 
 const STATUS_COLORS = { 1: 'badge-red', 2: 'badge-yellow', 3: 'badge-gray' };
 const PRIORITY_LABELS = { 1: 'P1', 2: 'P2', 3: 'P3' };
@@ -200,6 +201,9 @@ export default function ChatTicketView() {
       jest_od_pracownika: !!k.created_by,
       jest_systemowa: k.typ === 'system',
       autor: k.imie ? `${k.imie} ${k.nazwisko}` : null,
+      autorImie: k.imie,
+      autorNazwisko: k.nazwisko,
+      autorAvatar: k.avatar_path,
       pliki: k.pliki,
     })),
   ];
@@ -229,7 +233,10 @@ export default function ChatTicketView() {
                 <div key={m.id} className={`flex ${m.jest_od_pracownika ? 'justify-end' : 'justify-start'}`}>
                   <div className="max-w-[75%]">
                     {m.jest_od_pracownika && m.autor && (
-                      <p className="text-[11px] text-gray-400 text-right mb-0.5">{m.autor}</p>
+                      <p className="text-[11px] text-gray-400 text-right mb-0.5 flex items-center justify-end gap-1">
+                        {m.autor}
+                        <Avatar imie={m.autorImie} nazwisko={m.autorNazwisko} avatarPath={m.autorAvatar} className="w-4 h-4 text-[8px]" />
+                      </p>
                     )}
                     <div
                       className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${

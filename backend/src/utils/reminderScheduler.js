@@ -80,6 +80,30 @@ async function sendUnassignedReminder(worker, tickets, baseUrl, appName) {
   await sendNotification({ to: worker.email, subject, html, greeting, lang });
 }
 
+// Wariant kanałowy — tickety bez przypisanego pracownika, ale należące do zespołu, którego
+// kanał (czat/e-mail) ma skonfigurowany notification_email, idą tam zamiast do adminów.
+async function sendUnassignedChannelReminder(channelEmail, teamName, tickets, baseUrl, appName) {
+  const lang = await getAppLang(pool);
+  const count = tickets.length;
+  const hours = tickets[0]?.delay_hours || 24;
+  const unit = pluralUnit(lang, count, 'unassigned');
+
+  const subject = count === 1
+    ? tr(lang, 'subject_unassigned_channel_single', { appName, count, team: teamName })
+    : tr(lang, 'subject_unassigned_channel_plural', { appName, count, team: teamName });
+
+  const html = `
+    <p>${tr(lang, 'unassigned_channel_intro', { count, unit, hours, team: teamName })}</p>
+    ${ticketTableHtml(tickets, baseUrl, lang)}
+    <p style="margin-top:16px">
+      <a href="${baseUrl}/tickets" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px">
+        ${tr(lang, 'btn_view_tickets')}
+      </a>
+    </p>`;
+
+  await sendNotification({ to: channelEmail, subject, html, greeting: tr(lang, 'greeting_formal'), lang });
+}
+
 async function sendPendingReminder(worker, tickets, baseUrl, appName) {
   const lang = await resolveLang(pool, worker.id);
   const count = tickets.length;
@@ -183,14 +207,23 @@ async function runReminders() {
     const baseUrl = await getSiteUrl();
 
     // ── 1. Nieprzypisane nowe tickety ─────────────────────────────────────────
+    // Tickety zespołu, którego kanał (czat/e-mail) ma skonfigurowany notification_email,
+    // dostają przypomnienie tam zamiast do adminów — reszta (bez zespołu/kanału) jak dawniej.
     const [unassigned] = await pool.query(
-      `SELECT t.id, t.numer, t.message_subject,
+      `SELECT t.id, t.numer, t.message_subject, t.data_utworzenia,
               ROUND((UNIX_TIMESTAMP() - t.data_utworzenia) / 3600, 0) AS age_hours,
-              ? AS delay_hours
+              ? AS delay_hours,
+              MIN(kc.notification_email) AS channel_email,
+              MIN(z.nazwa) AS channel_team_name
        FROM ticket t
+       LEFT JOIN zespol_has_ticket zht ON zht.ticket_id = t.id
+       LEFT JOIN kanal_czatu kc ON kc.zespol_id = zht.zespol_id AND kc.aktywny = 1
+              AND kc.notification_email IS NOT NULL AND kc.notification_email != ''
+       LEFT JOIN zespol z ON z.id = kc.zespol_id
        WHERE t.status = 1
          AND t.data_utworzenia < ?
          AND NOT EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id)
+       GROUP BY t.id, t.numer, t.message_subject, t.data_utworzenia
        ORDER BY t.data_utworzenia ASC
        LIMIT 50`,
       [delayHours, cutoff]
@@ -199,17 +232,36 @@ async function runReminders() {
     const appName = settings?.app_name || 'Helpdesk';
 
     if (unassigned.length > 0) {
-      const [admins] = await pool.query(
-        `SELECT u.id, u.email, u.imie, u.nazwisko
-         FROM user u JOIN auth_assignment aa ON aa.user_id = u.id
-         WHERE aa.item_name = 'admin' AND u.email IS NOT NULL AND u.email != ''`
-      );
-      for (const admin of admins) {
-        await sendUnassignedReminder(admin, unassigned, baseUrl, appName).catch(e =>
-          console.warn(`[Reminder] Email do admina ${admin.email} nie wysłany:`, e.message)
+      const withoutChannel = unassigned.filter(t => !t.channel_email);
+      const byChannel = {};
+      for (const t of unassigned) {
+        if (!t.channel_email) continue;
+        if (!byChannel[t.channel_email]) byChannel[t.channel_email] = { teamName: t.channel_team_name, tickets: [] };
+        byChannel[t.channel_email].tickets.push(t);
+      }
+
+      for (const [channelEmail, { teamName, tickets }] of Object.entries(byChannel)) {
+        await sendUnassignedChannelReminder(channelEmail, teamName, tickets, baseUrl, appName).catch(e =>
+          console.warn(`[Reminder] Email do kanału ${channelEmail} nie wysłany:`, e.message)
         );
       }
-      console.log(`[Reminder] Nieprzypisane: ${unassigned.length} ticketów → ${admins.length} adminów`);
+      if (Object.keys(byChannel).length > 0) {
+        console.log(`[Reminder] Nieprzypisane (kanały zespołów): ${Object.keys(byChannel).length} kanałów`);
+      }
+
+      if (withoutChannel.length > 0) {
+        const [admins] = await pool.query(
+          `SELECT u.id, u.email, u.imie, u.nazwisko
+           FROM user u JOIN auth_assignment aa ON aa.user_id = u.id
+           WHERE aa.item_name = 'admin' AND u.email IS NOT NULL AND u.email != ''`
+        );
+        for (const admin of admins) {
+          await sendUnassignedReminder(admin, withoutChannel, baseUrl, appName).catch(e =>
+            console.warn(`[Reminder] Email do admina ${admin.email} nie wysłany:`, e.message)
+          );
+        }
+        console.log(`[Reminder] Nieprzypisane: ${withoutChannel.length} ticketów → ${admins.length} adminów`);
+      }
     }
 
     // ── 2. Przypisane tickety z oczekującą korespondencją ─────────────────────

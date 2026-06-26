@@ -25,11 +25,24 @@ async function getTransport(settings) {
 }
 
 // ─── Formalny szablon HTML ────────────────────────────────────────────────────
-function formalTemplate({ greeting, content, senderName, stopka, appName, replyLine = false, lang = 'pl' }) {
+function formalTemplate({ greeting, content, senderName, stopka, appName, replyLine = false, lang = 'pl', staffName, staffAvatarUrl }) {
   if (!greeting) greeting = lang === 'en' ? 'Dear Sir/Madam,' : 'Szanowni Państwo,';
   const stopkaHtml = stopka
     ? `<div style="margin-top:4px;font-size:12px;color:#6b7280;white-space:pre-line">${stopka}</div>`
     : '';
+
+  // Pokazuje kto konkretnie odpowiedział (zdjęcie + imię i nazwisko pracownika), niezależnie
+  // od ogólnego podpisu instytucji poniżej — tabela (nie flex/grid) dla zgodności z Outlookiem.
+  const staffBlockHtml = staffName ? `
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 16px">
+      <tr>
+        ${staffAvatarUrl ? `<td style="padding-right:10px;vertical-align:middle"><img src="${staffAvatarUrl}" width="36" height="36" style="border-radius:50%;display:block;object-fit:cover" alt=""></td>` : ''}
+        <td style="vertical-align:middle">
+          <p style="margin:0;color:#9ca3af;font-size:11px;text-transform:uppercase;letter-spacing:0.03em">${lang === 'en' ? 'Replied by' : 'Odpowiedział(a)'}</p>
+          <p style="margin:0;color:#111827;font-size:14px;font-weight:600">${staffName}</p>
+        </td>
+      </tr>
+    </table>` : '';
 
   // Separator "odpowiadaj powyżej" — pojawia się poniżej całego boxa emaila,
   // w szarym tle, poza białą kartą. Komentarz HTML <!-- helpdesk-separator -->
@@ -79,6 +92,7 @@ function formalTemplate({ greeting, content, senderName, stopka, appName, replyL
         <tr>
           <td style="padding:24px 28px 28px">
             <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px">
+            ${staffBlockHtml}
             <p style="margin:0;color:#374151;font-size:14px;line-height:1.6">
               ${lang === 'en' ? 'Kind regards,' : 'Z poważaniem,'}<br>
               <strong>${senderName || 'Helpdesk'}</strong>
@@ -105,7 +119,7 @@ function formalTemplate({ greeting, content, senderName, stopka, appName, replyL
 }
 
 // ─── sendReply — odpowiedź na ticket ─────────────────────────────────────────
-async function sendReply({ to, cc, subject, html, tresc, attachments }) {
+async function sendReply({ to, cc, subject, html, tresc, attachments, staffName, staffAvatarUrl }) {
   const settings = await getSettings();
   if (!settings) throw new Error('Brak ustawień poczty');
 
@@ -119,6 +133,8 @@ async function sendReply({ to, cc, subject, html, tresc, attachments }) {
     stopka: settings.email_stopka,
     appName: settings.app_name,
     replyLine: true,
+    staffName,
+    staffAvatarUrl,
   });
 
   // Dodaj separator do wersji tekstowej
@@ -268,8 +284,79 @@ async function sendForward({ to, ticketNumer, ticketSubject, ticketFrom, ticketD
   return msgId;
 }
 
-// ─── notifyAdminsNewTicket — email do adminów o nowym zgłoszeniu ──────────────
-async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source }) {
+// ─── notifyChannelNewTicket — email na adres kanału o nowym zgłoszeniu zespołu ────────────────
+// Używane zamiast notifyAdminsNewTicket, gdy ticket trafił do zespołu obsługującego kanał
+// (czat/e-mail) z ustawionym notification_email — wysyłane tylko gdy nikt z TEGO zespołu
+// nie jest aktualnie zalogowany (sprawdzane per zespół, nie globalnie po wszystkich adminach).
+async function notifyChannelNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail }) {
+  try {
+    const ONLINE_THRESHOLD = 3 * 60;
+    const now = Math.floor(Date.now() / 1000);
+    try {
+      const [online] = await pool.query(
+        `SELECT 1 FROM user_presence up
+         JOIN zespol_user zu ON zu.user_id = up.user_id
+         WHERE zu.zespol_id = ? AND up.last_seen_at > ?
+         LIMIT 1`,
+        [zespolId, now - ONLINE_THRESHOLD]
+      );
+      if (online.length > 0) return;
+    } catch {}
+
+    const [[zespol]] = await pool.query('SELECT nazwa FROM zespol WHERE id = ?', [zespolId]);
+    const teamName = zespol?.nazwa || '';
+
+    const baseUrl = await getSiteUrl();
+    const link = `${baseUrl}/tickets/${ticketId}`;
+    const displaySubject = (subject || '(brak tematu)').replace(/</g, '&lt;');
+    const displayFrom = (from || '').replace(/</g, '&lt;');
+
+    const appName = await getAppName();
+    const lang = await getAppLang(pool);
+    const sourceKey = source === 'web_form' ? 'source_web_form' : source === 'live_chat' ? 'source_live_chat' : 'source_email';
+    const srcLabel = t(lang, sourceKey);
+
+    await sendNotification({
+      to: channelEmail,
+      subject: t(lang, 'subject_new_ticket_channel', { appName, numer, team: teamName }),
+      greeting: t(lang, 'greeting_formal'),
+      lang,
+      html: `
+        <p>${t(lang, 'new_ticket_channel_intro', { source: srcLabel, team: teamName })}</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0">
+          <tr style="background:#f9fafb">
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;width:140px;color:#374151">${t(lang, 'col_ticket_no')}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#111827">#${numer}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;color:#374151">${t(lang, 'col_from')}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#111827">${displayFrom}</td>
+          </tr>
+          <tr style="background:#f9fafb">
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;color:#374151">${t(lang, 'col_subject')}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#111827">${displaySubject}</td>
+          </tr>
+        </table>
+        <p style="margin-top:16px">
+          <a href="${link}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px">
+            ${t(lang, 'btn_view_ticket')}
+          </a>
+        </p>
+      `,
+    });
+  } catch (e) {
+    console.warn('[notifyChannelNewTicket]', e.message);
+  }
+}
+
+// ─── notifyAdminsNewTicket — email do adminów (lub na kanał zespołu) o nowym zgłoszeniu ───────
+async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail }) {
+  // Ticket trafił do zespołu, który ma kanał ze skonfigurowanym adresem powiadomień —
+  // mail idzie tam, nie do adminów. Bez tej konfiguracji zachowanie jest jak dawniej.
+  if (zespolId && channelEmail) {
+    return notifyChannelNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail });
+  }
+
   try {
     const ONLINE_THRESHOLD = 3 * 60;
     const now = Math.floor(Date.now() / 1000);
@@ -285,7 +372,7 @@ async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source })
     } catch {}
 
     const [admins] = await pool.query(
-      `SELECT u.email, u.imie FROM user u
+      `SELECT u.id, u.email, u.imie FROM user u
        INNER JOIN auth_assignment aa ON aa.user_id = u.id
        WHERE aa.item_name = 'admin' AND u.status = 10 AND u.email IS NOT NULL AND u.email != ''`
     );

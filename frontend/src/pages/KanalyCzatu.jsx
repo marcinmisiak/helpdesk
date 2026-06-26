@@ -12,6 +12,7 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
     typ: channel?.typ || 'chat',
     dozwolone_domeny: channel?.dozwolone_domeny || '',
     powitanie: channel?.powitanie || '',
+    notification_email: channel?.notification_email || '',
     imap_server: channel?.imap_server || '',
     imap_port: channel?.imap_port || '',
     imap_login: channel?.imap_login || '',
@@ -70,6 +71,17 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
               <option value="chat">{t('chat_channels.field_type_chat')}</option>
               <option value="email">{t('chat_channels.field_type_email')}</option>
             </select>
+          </div>
+          <div>
+            <label className="label">{t('chat_channels.field_notification_email')}</label>
+            <input
+              type="email"
+              value={form.notification_email}
+              onChange={set('notification_email')}
+              placeholder="zespol@example.com"
+              className="input"
+            />
+            <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_notification_email_hint')}</p>
           </div>
           {form.typ === 'chat' ? (
             <>

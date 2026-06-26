@@ -1,8 +1,11 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+import Avatar from '../components/Avatar';
 
 function UserModal({ user, onClose, onSuccess }) {
   const { t } = useTranslation();
@@ -15,8 +18,26 @@ function UserModal({ user, onClose, onSuccess }) {
     status: user?.status ?? 10,
     language: user?.language || '',
   });
+  const [avatarPath, setAvatarPath] = useState(user?.avatar_path || null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const isEdit = !!user;
+
+  const handleAvatarUpload = async (file) => {
+    setAvatarUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+      const { data } = await api.post(`/users/${user.id}/avatar`, formData);
+      setAvatarPath(data.avatar_path);
+      onSuccess();
+      toast.success(t('users.avatar_updated'));
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('users.avatar_error'));
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   const save = async () => {
     try {
@@ -45,6 +66,27 @@ function UserModal({ user, onClose, onSuccess }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
         </div>
         <div className="p-4 space-y-3">
+          {isEdit && (
+            <div className="flex items-center gap-3">
+              <label className="relative group cursor-pointer flex-shrink-0" title={t('users.change_photo')}>
+                <Avatar imie={form.imie} nazwisko={form.nazwisko} avatarPath={avatarPath} className="w-16 h-16 text-lg" />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAvatarUpload(file);
+                    e.target.value = '';
+                  }}
+                />
+                <span className="absolute inset-0 rounded-full flex items-center justify-center text-white text-[11px] text-center bg-black/0 group-hover:bg-black/40 opacity-0 group-hover:opacity-100 transition-all">
+                  {avatarUploading ? '…' : t('users.change_photo')}
+                </span>
+              </label>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{t('users.avatar_hint')}</span>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">{t('users.field_first_name')}</label>
@@ -110,6 +152,8 @@ export default function Uzytkownicy() {
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState('');
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { user: currentUser, impersonateUser } = useAuth();
 
   const ROLE_LABELS = {
     admin: t('users.role_admin'),
@@ -133,6 +177,15 @@ export default function Uzytkownicy() {
       `${u.imie} ${u.nazwisko} ${u.email}`.toLowerCase().includes(q)
     );
   }, [users, search]);
+
+  const handleImpersonate = async (u) => {
+    try {
+      await impersonateUser(u.id);
+      navigate(u.rola === 'admin' ? '/tickets' : '/moje');
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('users.impersonate_error'));
+    }
+  };
 
   return (
     <div>
@@ -168,6 +221,7 @@ export default function Uzytkownicy() {
                 <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="px-3 py-2 font-medium">
                     <span className="flex items-center gap-2">
+                      <Avatar imie={u.imie} nazwisko={u.nazwisko} avatarPath={u.avatar_path} className="w-7 h-7 text-xs" />
                       {u.is_online ? (
                         <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title={t('users.online')} />
                       ) : (
@@ -188,7 +242,14 @@ export default function Uzytkownicy() {
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    <button onClick={() => setModal(u)} className="btn-secondary btn-sm">{t('users.edit')}</button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setModal(u)} className="btn-secondary btn-sm">{t('users.edit')}</button>
+                      {u.id !== currentUser?.id && (
+                        <button onClick={() => handleImpersonate(u)} className="btn-secondary btn-sm">
+                          {t('users.impersonate')}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

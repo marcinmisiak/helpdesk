@@ -8,11 +8,11 @@ import axios from 'axios';
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
 const API_URL  = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-function OAuthButton({ provider, label, icon, primary }) {
+function OAuthButton({ provider, label, icon, primary, remember }) {
   return (
     <button
       type="button"
-      onClick={() => { window.location.href = `${API_URL}/auth/${provider}`; }}
+      onClick={() => { window.location.href = `${API_URL}/auth/${provider}${remember ? '?remember=1' : ''}`; }}
       className={
         primary
           ? 'w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors bg-blue-700 hover:bg-blue-800 text-white border border-blue-700'
@@ -47,6 +47,7 @@ export default function Login() {
   const { t, i18n } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
@@ -75,7 +76,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const user = await login(email, password);
+      const user = await login(email, password, remember);
       if (user.language) setLanguage(user.language);
       navigate(user.rola === 'admin' ? '/tickets' : '/moje');
     } catch (err) {
@@ -178,14 +179,25 @@ export default function Login() {
             </div>
           )}
 
+          {/* ── Zapamiętaj mnie ── */}
+          <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={e => setRemember(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-slate-600">{t('login.remember_me')}</span>
+          </label>
+
           {/* ── Przyciski OAuth ── */}
           {providers && (
             <div className="space-y-2.5">
               {providers.microsoft && (
-                <OAuthButton provider="microsoft" label={t('login.microsoft')} icon={MicrosoftIcon} primary />
+                <OAuthButton provider="microsoft" label={t('login.microsoft')} icon={MicrosoftIcon} primary remember={remember} />
               )}
               {providers.google && (
-                <OAuthButton provider="google" label={t('login.google')} icon={GoogleIcon} />
+                <OAuthButton provider="google" label={t('login.google')} icon={GoogleIcon} remember={remember} />
               )}
             </div>
           )}

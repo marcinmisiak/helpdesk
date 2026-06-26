@@ -1,0 +1,5 @@
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
+
+export function avatarUrl(avatarPath) {
+  return avatarPath ? `${API_BASE}/pliki/${avatarPath}` : null;
+}

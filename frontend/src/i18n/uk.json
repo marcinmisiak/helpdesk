@@ -17,6 +17,7 @@
     "new_count": "Нових",
     "inprogress_count": "В роботі",
     "my_count": "Моїх",
+    "team_count": "Команди",
     "deferred_count": "Відкл.",
     "role_admin": "👑 Адміністратор",
     "role_worker": "🔧 Працівник"
@@ -62,6 +63,7 @@
     "email": "Email",
     "email_placeholder": "ваш@email.com",
     "password": "Пароль",
+    "remember_me": "Запам'ятати мене",
     "forgot_password": "Забули пароль",
     "submit": "Увійти",
     "submitting": "Вхід...",

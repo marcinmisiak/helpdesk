@@ -57,26 +57,44 @@ router.get('/count', async (req, res) => {
 
     const [[nowe]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE status = 1 AND (odlozony = 0 OR odlozony IS NULL)');
     const [[wtoku]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE status = 2 AND (odlozony = 0 OR odlozony IS NULL)');
+
+    // Ticket jest "mój": przydzielony mi bezpośrednio (user_has_ticket), ALBO trafił do zespołu,
+    // którego jestem członkiem, i nikt konkretny się jeszcze do niego nie przypisał — samo
+    // przydzielenie do zespołu (bez pracownika) nie "zabiera" ticketu reszcie zespołu z licznika.
+    const MINE_OR_TEAM_POOL = `(
+       EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id AND uht.user_id = ?)
+       OR (
+         NOT EXISTS (SELECT 1 FROM user_has_ticket uht2 WHERE uht2.ticket_id = t.id)
+         AND EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?)
+       )
+     )`;
+
     const [[moje]] = await pool.query(
       `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
-       WHERE t.status = 2 AND (t.odlozony = 0 OR t.odlozony IS NULL)
-         AND (EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id AND uht.user_id = ?)
-              OR EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?))`,
+       WHERE t.status IN (1, 2) AND (t.odlozony = 0 OR t.odlozony IS NULL)
+         AND ${MINE_OR_TEAM_POOL}`,
       [req.user.id, req.user.id]
+    );
+    // Podzbiór `moje`: tickety jeszcze nikomu indywidualnie nieprzydzielone, w puli zespołu —
+    // frontend pokazuje je pod etykietą "Zespołu" (czerwone) zamiast "Moich" (żółte).
+    const [[zespolowe]] = await pool.query(
+      `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
+       WHERE t.status = 1 AND (t.odlozony = 0 OR t.odlozony IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id)
+         AND EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?)`,
+      [req.user.id]
     );
     const [[czaty]] = await pool.query(
       `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
        WHERE t.zrodlo IN ('live_chat', 'messenger') AND t.status != 3
-         AND (EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id AND uht.user_id = ?)
-              OR EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?))`,
+         AND ${MINE_OR_TEAM_POOL}`,
       [req.user.id, req.user.id]
     );
     const [[odloz]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE odlozony = 1');
     const [[mojeOdloz]] = await pool.query(
       `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
        WHERE t.odlozony = 1
-         AND (EXISTS (SELECT 1 FROM user_has_ticket uht WHERE uht.ticket_id = t.id AND uht.user_id = ?)
-              OR EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?))`,
+         AND ${MINE_OR_TEAM_POOL}`,
       [req.user.id, req.user.id]
     );
 
@@ -133,7 +151,7 @@ router.get('/count', async (req, res) => {
     } catch {}
 
     res.json({
-      nowe: nowe.cnt, wtoku: wtoku.cnt, moje: moje.cnt, czaty: czaty.cnt, odlozone: odloz.cnt, mojeOdlozone: mojeOdloz.cnt,
+      nowe: nowe.cnt, wtoku: wtoku.cnt, moje: moje.cnt, zespolowe: zespolowe.cnt, czaty: czaty.cnt, odlozone: odloz.cnt, mojeOdlozone: mojeOdloz.cnt,
       alerts: alertCount, spam: spamCount,
       last_ticket_at: newest.ts || 0,
       last_reply_at: lastReplyAt,

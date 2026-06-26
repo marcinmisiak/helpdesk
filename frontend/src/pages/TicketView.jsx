@@ -11,6 +11,7 @@ import SLABadge from '../components/SLABadge';
 import AITagBadge from '../components/AITagBadge';
 import PrzydielModal from '../components/PrzydielModal';
 import LdapPanel from '../components/LdapPanel';
+import Avatar from '../components/Avatar';
 
 // Wymusza białe tło i czarny tekst wewnątrz iframe z treścią e-mail.
 function wrapEmailHtml(html) {
@@ -1136,7 +1137,10 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
               {cfg.label}
             </span>
           )}
-          <span className={`truncate ${!przeczytane ? 'font-bold text-gray-900 dark:text-gray-100' : 'font-medium'}`}>
+          <span className={`truncate flex items-center gap-1.5 ${!przeczytane ? 'font-bold text-gray-900 dark:text-gray-100' : 'font-medium'}`}>
+            {k.imie && (
+              <Avatar imie={k.imie} nazwisko={k.nazwisko} avatarPath={k.avatar_path} className="w-5 h-5 text-[9px] flex-shrink-0" />
+            )}
             {k.message_from || (k.imie ? `${k.imie} ${k.nazwisko}` : t('common.unassigned'))}
           </span>
           {k.message_to && (

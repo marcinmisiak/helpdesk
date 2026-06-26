@@ -24,6 +24,15 @@ export default function CsatSurvey() {
   }, []);
 
   useEffect(() => {
+    // Strona publiczna, bez własnego trybu ciemnego — bez tego systemowy dark mode w
+    // Chrome/Firefox auto-przyciemnia pola formularza (jasny tekst na jasnym tle) mimo
+    // jawnych klas Tailwind (patrz ten sam fix w ChatWidget.jsx).
+    const prev = document.documentElement.style.colorScheme;
+    document.documentElement.style.colorScheme = 'light';
+    return () => { document.documentElement.style.colorScheme = prev; };
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     setError('');
     pub.get(`/public/ocena/${token}`)
@@ -49,7 +58,7 @@ export default function CsatSurvey() {
   const logoUrl = branding.logo_path ? `${API_BASE}/pliki/${branding.logo_path}` : null;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col" style={{ colorScheme: 'light' }}>
       <div className="flex-1 py-8 px-4">
         <div className="max-w-md mx-auto">
           <div className="text-center mb-6">
@@ -107,7 +116,7 @@ export default function CsatSurvey() {
                     onChange={(e) => setComment(e.target.value)}
                     rows={4}
                     placeholder={t('csat_survey.comment_placeholder')}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 bg-white text-black"
                   />
 
                   {error && <p className="text-red-600 text-sm mb-3">{error}</p>}

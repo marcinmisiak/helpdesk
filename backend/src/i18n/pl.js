@@ -3,8 +3,11 @@
 module.exports = {
   // Tematy
   subject_new_ticket: '[{appName}] Nowe zgłoszenie #{numer}',
+  subject_new_ticket_channel: '[{appName}] Nowe zgłoszenie #{numer} — zespół {team}',
   subject_unassigned_single: '[{appName}] {count} nieodebrane zgłoszenie — wymaga przypisania',
   subject_unassigned_plural: '[{appName}] {count} nieodebrane zgłoszenia — wymagają przypisania',
+  subject_unassigned_channel_single: '[{appName}] {count} nieodebrane zgłoszenie w zespole {team}',
+  subject_unassigned_channel_plural: '[{appName}] {count} nieodebrane zgłoszenia w zespole {team}',
   subject_pending_single: '[{appName}] Przypomnienie: {count} zgłoszenie czeka na odpowiedź',
   subject_pending_plural: '[{appName}] Przypomnienie: {count} zgłoszeń czeka na odpowiedź',
   subject_close_reminder_with_subject: '[{appName}] Czy Twoje zgłoszenie #{numer} zostało rozwiązane? — {subject}',
@@ -21,11 +24,14 @@ module.exports = {
   greeting_formal_name: 'Szanowna Pani / Szanowny Panie {name},',
 
   new_ticket_intro: 'Do systemu helpdesk wpłynęło nowe zgłoszenie (źródło: <strong>{source}</strong>).',
+  new_ticket_channel_intro: 'Do zespołu <strong>{team}</strong> wpłynęło nowe zgłoszenie (źródło: <strong>{source}</strong>). Nikt z zespołu nie jest obecnie zalogowany w systemie.',
   source_web_form: 'formularz WWW',
   source_email: 'email',
+  source_live_chat: 'czat na żywo',
   col_ticket_no: 'Nr zgłoszenia',
   col_from: 'Od',
   col_subject: 'Temat',
+  col_team: 'Zespół',
   col_assigned_by: 'Przypisał/a',
   col_removed_by: 'Usunął/a',
   btn_view_ticket: 'Przejdź do zgłoszenia',
@@ -33,6 +39,7 @@ module.exports = {
   btn_view_my: 'Przejdź do moich zgłoszeń',
 
   unassigned_intro: 'W systemie czeka <strong>{count} {unit}</strong> bez przypisanego pracownika od ponad {hours} godzin.',
+  unassigned_channel_intro: 'W zespole <strong>{team}</strong> czeka <strong>{count} {unit}</strong> bez przypisanego pracownika od ponad {hours} godzin.',
   unassigned_unit_1: 'zgłoszenie',
   unassigned_unit_234: 'zgłoszenia',
   unassigned_unit_many: 'zgłoszeń',

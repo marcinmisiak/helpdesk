@@ -18,6 +18,7 @@
     "new_count": "Nowych",
     "inprogress_count": "W toku",
     "my_count": "Moich",
+    "team_count": "Zespołu",
     "deferred_count": "Odłoż.",
     "role_admin": "👑 Administrator",
     "role_worker": "🔧 Pracownik"
@@ -63,6 +64,7 @@
     "email": "Email",
     "email_placeholder": "twoj@email.pl",
     "password": "Hasło",
+    "remember_me": "Zapamiętaj mnie",
     "forgot_password": "Zapomniałem hasła",
     "submit": "Zaloguj się",
     "submitting": "Logowanie...",
@@ -272,6 +274,12 @@
     "online": "Online",
     "offline": "Offline",
     "edit": "Edytuj",
+    "impersonate": "Zaloguj się jako",
+    "impersonate_error": "Nie udało się zalogować jako ten użytkownik",
+    "change_photo": "Zmień zdjęcie",
+    "avatar_hint": "Kliknij zdjęcie, aby je zmienić",
+    "avatar_updated": "Zdjęcie zaktualizowane",
+    "avatar_error": "Nie udało się zapisać zdjęcia",
     "modal_edit_title": "Edytuj użytkownika",
     "modal_new_title": "Nowy użytkownik",
     "field_first_name": "Imię",
@@ -290,6 +298,14 @@
     "created": "Użytkownik utworzony",
     "error_no_password": "Podaj hasło",
     "error_save": "Błąd zapisu"
+  },
+  "impersonate": {
+    "banner": "Jesteś zalogowany jako: {{name}} z rolą {{role}}",
+    "return": "Powrót do mojego użytkownika"
+  },
+  "profile": {
+    "avatar_updated": "Zdjęcie profilowe zaktualizowane",
+    "avatar_error": "Nie udało się zapisać zdjęcia"
   },
   "templates": {
     "title": "Szablony odpowiedzi",
@@ -380,6 +396,8 @@
     "field_type": "Typ kanału",
     "field_type_chat": "Czat",
     "field_type_email": "E-mail",
+    "field_notification_email": "Email powiadomień kanału",
+    "field_notification_email_hint": "Gdy nikt z zespołu nie jest zalogowany, powiadomienie o nowym tickecie (i codzienne przypomnienie o nieodebranych) trafi na ten adres zamiast do adminów. Pozostaw puste, aby zachować dotychczasowe zachowanie.",
     "field_imap_server": "Serwer IMAP",
     "field_imap_port": "Port IMAP",
     "field_imap_login": "Login (adres e-mail)",

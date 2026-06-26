@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import SLABadge from '../components/SLABadge';
 import AITagBadge from '../components/AITagBadge';
 
-const STATUS_COLORS = { 1: 'badge-blue', 2: 'badge-green', 3: 'badge-gray' };
+const STATUS_COLORS = { 1: 'badge-red', 2: 'badge-yellow', 3: 'badge-gray' };
 const PRIORITY_LABELS = { 1: 'P1', 2: 'P2', 3: 'P3' };
 const SOURCE_ICONS = { email: '📧', web_form: '🌐', live_chat: '💬', messenger: '📘' };
 const CHAT_ZRODLA = ['live_chat', 'messenger'];

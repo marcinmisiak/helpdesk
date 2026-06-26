@@ -4,6 +4,7 @@ import axios from 'axios';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import useDateLocale from '../i18n/useDateLocale';
+import Avatar from '../components/Avatar';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api');
 const API_BASE = BASE.replace('/api', '');
@@ -209,10 +210,13 @@ export default function PublicTicketView() {
                               ? 'bg-white border-gray-300 rounded-tl-none'
                               : 'bg-blue-700 border-blue-800 rounded-tr-none'
                       }`}>
-                        <div className={`text-xs mb-1.5 font-semibold ${
+                        <div className={`text-xs mb-1.5 font-semibold flex items-center gap-1.5 ${
                           isAi ? 'text-indigo-700' : isAuto ? 'text-gray-500' : k.jest_od_pracownika ? 'text-blue-800' : 'text-white'
                         }`}>
-                          {isAi ? '🤖 Odpowiedź AI' : isAuto ? '⚙️ Helpdesk (auto)' : k.jest_od_pracownika ? `👤 ${k.od}` : '✉️ Ty'}
+                          {k.jest_od_pracownika && (
+                            <Avatar imie={k.imie} nazwisko={k.nazwisko} avatarPath={k.avatar_path} className="w-5 h-5 text-[9px]" />
+                          )}
+                          {isAi ? '🤖 Odpowiedź AI' : isAuto ? '⚙️ Helpdesk (auto)' : k.jest_od_pracownika ? k.od : '✉️ Ty'}
                           <span className={`ml-2 font-normal ${
                             isAi ? 'text-indigo-400' : isAuto ? 'text-gray-400' : k.jest_od_pracownika ? 'text-gray-700' : 'text-blue-100'
                           }`}>

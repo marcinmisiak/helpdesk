@@ -57,8 +57,11 @@ router.get('/', async (req, res) => {
     }
 
     if (moje === '1') {
+      // "Moje" = przydzielone mi bezpośrednio, ALBO w puli nieprzydzielonej jeszcze nikomu
+      // konkretnemu w zespole, którego jestem członkiem (patrz analogiczna logika w alerts.js).
       where += ` AND (EXISTS (SELECT 1 FROM user_has_ticket x WHERE x.ticket_id = t.id AND x.user_id = ?)
-                      OR EXISTS (SELECT 1 FROM zespol_has_ticket zht_m JOIN zespol_user zu_m ON zu_m.zespol_id = zht_m.zespol_id WHERE zht_m.ticket_id = t.id AND zu_m.user_id = ?))`;
+                      OR (NOT EXISTS (SELECT 1 FROM user_has_ticket x2 WHERE x2.ticket_id = t.id)
+                          AND EXISTS (SELECT 1 FROM zespol_has_ticket zht_m JOIN zespol_user zu_m ON zu_m.zespol_id = zht_m.zespol_id WHERE zht_m.ticket_id = t.id AND zu_m.user_id = ?)))`;
       params.push(req.user.id, req.user.id);
     }
 
@@ -187,16 +190,38 @@ router.get('/spam', requireAdmin, async (req, res) => {
   }
 });
 
+// Usuwa zależne wiersze (plik/korespondencja/notatka/user_has_ticket) przed DELETE z ticket —
+// inaczej pojedynczy ticket z odpowiedzią/notatką/przydziałem blokuje (FK constraint) usunięcie
+// całej partii na raz, bo DELETE FROM ticket WHERE id IN (...) jest jednym atomowym zapytaniem.
+async function deleteTicketsCascade(ids) {
+  if (!ids.length) return 0;
+  const placeholders = ids.map(() => '?').join(',');
+
+  const [files] = await pool.query(`SELECT filepath FROM plik WHERE ticket_id IN (${placeholders})`, ids);
+  for (const f of files) {
+    try { fs.unlinkSync(path.join(uploadDir, f.filepath)); } catch {}
+  }
+
+  await pool.query(`DELETE FROM plik WHERE ticket_id IN (${placeholders})`, ids);
+  await pool.query(`DELETE FROM korespondencja WHERE ticket_id IN (${placeholders})`, ids);
+  await pool.query(`DELETE FROM notatka WHERE ticket_id IN (${placeholders})`, ids).catch(() => {});
+  await pool.query(`DELETE FROM user_has_ticket WHERE ticket_id IN (${placeholders})`, ids);
+  await pool.query(`DELETE FROM zespol_has_ticket WHERE ticket_id IN (${placeholders})`, ids).catch(() => {});
+  await pool.query(`UPDATE ticket SET merged_into_id = NULL WHERE merged_into_id IN (${placeholders})`, ids).catch(() => {});
+
+  const [result] = await pool.query(
+    `DELETE FROM ticket WHERE id IN (${placeholders}) AND ai_tag = 'spam'`, ids
+  );
+  return result.affectedRows;
+}
+
 // DELETE /api/tickets/spam/masowe — trwałe usunięcie zaznaczonych
 router.delete('/spam/masowe', requireAdmin, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!ids?.length) return res.status(400).json({ error: 'Brak ids' });
-    await pool.query(
-      `DELETE FROM ticket WHERE id IN (${ids.map(() => '?').join(',')}) AND ai_tag = 'spam'`,
-      ids
-    );
-    res.json({ success: true, deleted: ids.length });
+    const deleted = await deleteTicketsCascade(ids);
+    res.json({ success: true, deleted });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -205,8 +230,9 @@ router.delete('/spam/masowe', requireAdmin, async (req, res) => {
 // DELETE /api/tickets/spam/wszystkie — usuń cały spam
 router.delete('/spam/wszystkie', requireAdmin, async (req, res) => {
   try {
-    const [result] = await pool.query("DELETE FROM ticket WHERE ai_tag = 'spam'");
-    res.json({ success: true, deleted: result.affectedRows });
+    const [rows] = await pool.query("SELECT id FROM ticket WHERE ai_tag = 'spam'");
+    const deleted = await deleteTicketsCascade(rows.map(r => r.id));
+    res.json({ success: true, deleted });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -278,7 +304,7 @@ router.get('/:id', async (req, res) => {
 
     // korespondencja
     const [koresp] = await pool.query(
-      `SELECT k.*, u.imie, u.nazwisko FROM korespondencja k
+      `SELECT k.*, u.imie, u.nazwisko, u.avatar_path FROM korespondencja k
        LEFT JOIN user u ON u.id = k.created_by
        WHERE k.ticket_id = ? ORDER BY k.data ASC`,
       [req.params.id]
@@ -432,6 +458,32 @@ router.delete('/:id/trwale', requireAdmin, async (req, res) => {
   }
 });
 
+// Przypisanie ticketu do konkretnego pracownika (siebie lub kogoś innego) przenosi ticket
+// do zespołu tego pracownika — jeśli ktoś z zespołu "Wsparcie" przejmuje ticket z kolejki
+// zespołu "Sprzedaż", ticket powinien liczyć się jako zespołu "Wsparcie", nie zostawać
+// "osierocony" w starym zespole. Brak zmiany, gdy pracownik nie należy do żadnego zespołu
+// (zostaje przy aktualnym przydziale zespołowym) albo gdy już zgadza się z przydziałem.
+async function syncZespolForAssignee(ticketId, userId, actorId) {
+  const [teams] = await pool.query('SELECT zespol_id FROM zespol_user WHERE user_id = ?', [userId]);
+  if (!teams.length) return;
+  const teamIds = [...new Set(teams.map(t => t.zespol_id))].sort((a, b) => a - b);
+
+  const [current] = await pool.query('SELECT zespol_id FROM zespol_has_ticket WHERE ticket_id = ?', [ticketId]);
+  const currentIds = [...new Set(current.map(c => c.zespol_id))].sort((a, b) => a - b);
+
+  const same = teamIds.length === currentIds.length && teamIds.every((id, i) => id === currentIds[i]);
+  if (same) return;
+
+  const now = Math.floor(Date.now() / 1000);
+  await pool.query('DELETE FROM zespol_has_ticket WHERE ticket_id = ?', [ticketId]);
+  for (const zespolId of teamIds) {
+    await pool.query(
+      'INSERT INTO zespol_has_ticket (ticket_id, zespol_id, created_at, created_by) VALUES (?, ?, ?, ?)',
+      [ticketId, zespolId, now, actorId]
+    );
+  }
+}
+
 // POST /api/tickets/:id/przydziel
 router.post('/:id/przydziel', async (req, res) => {
   try {
@@ -448,6 +500,8 @@ router.post('/:id/przydziel', async (req, res) => {
         'INSERT INTO user_has_ticket (ticket_id, user_id, data, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [req.params.id, user_id, now, req.user.id, req.user.id, now, now]
       );
+
+      await syncZespolForAssignee(req.params.id, user_id, req.user.id).catch(() => {});
 
       // Powiadom przypisanego pracownika
       const [[ticket]] = await pool.query(
@@ -595,7 +649,8 @@ router.post('/:id/przydziel-zespol', async (req, res) => {
         }).catch(() => {});
       }
     }
-    await pool.query('UPDATE ticket SET status=2 WHERE id=?', [req.params.id]);
+    // Przydzielenie do zespołu samo nie zmienia statusu — ticket zostaje "nowy" (status=1)
+    // w puli zespołu, dopóki konkretny pracownik się nie przypisze przez /przydziel (patrz alerts.js).
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -939,6 +994,7 @@ router.post('/:id/odpowiedz', upload.array('files', 10), async (req, res) => {
       actorUserId: req.user.id,
       actorEmail: req.user.email,
       actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+      actorAvatarPath: req.user.avatar_path,
     });
 
     res.json({
@@ -1021,6 +1077,7 @@ router.post('/masowe-przydziel', requireAdmin, async (req, res) => {
             'INSERT INTO user_has_ticket (ticket_id, user_id, data, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
             [ticketId, user_id, now, req.user.id, req.user.id, now, now]
           );
+          await syncZespolForAssignee(ticketId, user_id, req.user.id).catch(() => {});
         }
       }
       await pool.query(`UPDATE ticket SET status=2 WHERE id IN (${placeholders})`, ids);
@@ -1042,7 +1099,7 @@ router.post('/masowe-przydziel', requireAdmin, async (req, res) => {
           );
         }
       }
-      await pool.query(`UPDATE ticket SET status=2 WHERE id IN (${placeholders})`, ids);
+      // Przydzielenie do zespołu samo nie zmienia statusu — patrz komentarz przy /:id/przydziel-zespol.
       const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [zespol_id]);
       const [[zespol]] = await pool.query('SELECT nazwa FROM zespol WHERE id = ?', [zespol_id]);
       notifyUsers(members.map(m => m.user_id), {

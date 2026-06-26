@@ -8,6 +8,7 @@ const pool = require('../config/db');
 const { authenticate } = require('../middleware/auth');
 const { sendNotification, getAppName } = require('../utils/mailer');
 const { t: tr, resolveLang } = require('../i18n/index');
+const { saveAvatarFromBuffer } = require('../utils/avatar');
 
 // --- Rate limitery ---
 
@@ -29,6 +30,9 @@ const forgotLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Zbyt wiele prób resetowania hasła. Spróbuj ponownie za godzinę.' },
 });
+
+// "Zapamiętaj mnie" — dłuższy czas życia tokenu JWT niż domyślny JWT_EXPIRES_IN
+const JWT_REMEMBER_EXPIRES_IN = process.env.JWT_REMEMBER_EXPIRES_IN || '30d';
 
 // --- Blokada konta po nieudanych próbach logowania ---
 const loginFailures = new Map(); // email -> { count, lockedUntil }
@@ -60,7 +64,7 @@ function clearFailures(email) {
 
 // POST /api/auth/login
 router.post('/login', loginLimiter, async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, remember } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Podaj email i hasło' });
   }
@@ -76,7 +80,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT u.id, u.email, u.password, u.imie, u.nazwisko, u.status,
+      `SELECT u.id, u.email, u.password, u.imie, u.nazwisko, u.status, u.avatar_path,
               u.powiadom_nowy_ticket, u.powiadom_korespondencja,
               aa.item_name as rola,
               (SELECT GROUP_CONCAT(zespol_id) FROM zespol_user WHERE user_id = u.id AND is_kierownik = 1) as kierownik_zespol_ids_raw
@@ -112,7 +116,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     const token = jwt.sign(
       { id: user.id, email: user.email, rola: user.rola },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
+      { expiresIn: remember ? JWT_REMEMBER_EXPIRES_IN : process.env.JWT_EXPIRES_IN }
     );
 
     res.json({
@@ -123,6 +127,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         imie: user.imie,
         nazwisko: user.nazwisko,
         rola: user.rola,
+        avatar_path: user.avatar_path,
         powiadom_nowy_ticket: user.powiadom_nowy_ticket,
         powiadom_korespondencja: user.powiadom_korespondencja,
         kierownik_zespol_ids: user.kierownik_zespol_ids_raw ? user.kierownik_zespol_ids_raw.split(',').map(Number) : [],
@@ -268,18 +273,20 @@ const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
 
-// Tymczasowy store na state CSRF (wygasa po 10 minutach)
+// Tymczasowy store na state CSRF (wygasa po 10 minutach). Niesie też flagę
+// "remember", bo to jedyny sposób przeniesienia wyboru użytkownika przez
+// przekierowanie do providera OAuth i z powrotem.
 const oauthStates = new Map();
-function createState() {
+function createState(remember = false) {
   const state = crypto.randomBytes(16).toString('hex');
-  oauthStates.set(state, Date.now() + 10 * 60 * 1000);
+  oauthStates.set(state, { exp: Date.now() + 10 * 60 * 1000, remember: !!remember });
   return state;
 }
 function validateState(state) {
-  const exp = oauthStates.get(state);
-  if (!exp || Date.now() > exp) return false;
+  const rec = oauthStates.get(state);
+  if (!rec || Date.now() > rec.exp) return null;
   oauthStates.delete(state);
-  return true;
+  return rec;
 }
 
 function getBackendUrl() {
@@ -291,7 +298,7 @@ router.get('/google', (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID) {
     return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=oauth_not_configured`);
   }
-  const state = createState();
+  const state = createState(req.query.remember === '1');
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: `${getBackendUrl()}/api/auth/google/callback`,
@@ -311,7 +318,8 @@ router.get('/google/callback', async (req, res) => {
   if (error || !code) {
     return res.redirect(`${frontendUrl}/login?error=oauth_denied`);
   }
-  if (!validateState(state)) {
+  const stateRec = validateState(state);
+  if (!stateRec) {
     return res.redirect(`${frontendUrl}/login?error=oauth_invalid_state`);
   }
 
@@ -338,7 +346,9 @@ router.get('/google/callback', async (req, res) => {
     const profile = await userRes.json();
     if (!profile.email) throw new Error('Brak email od Google');
 
-    const jwt_token = await handleOAuthLogin('google', profile.id, profile.email);
+    const jwt_token = await handleOAuthLogin('google', profile.id, profile.email, {
+      remember: stateRec.remember,
+    });
     res.redirect(`${frontendUrl}/auth/callback?token=${jwt_token}`);
   } catch (err) {
     console.error('[google/callback]', err.message);
@@ -360,7 +370,7 @@ router.get('/microsoft', (req, res) => {
   if (!process.env.MICROSOFT_CLIENT_ID) {
     return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=oauth_not_configured`);
   }
-  const state = createState();
+  const state = createState(req.query.remember === '1');
   const params = new URLSearchParams({
     client_id: process.env.MICROSOFT_CLIENT_ID,
     redirect_uri: `${getBackendUrl()}/api/auth/microsoft/callback`,
@@ -380,7 +390,8 @@ router.get('/microsoft/callback', async (req, res) => {
   if (error || !code) {
     return res.redirect(`${frontendUrl}/login?error=oauth_denied`);
   }
-  if (!validateState(state)) {
+  const stateRec = validateState(state);
+  if (!stateRec) {
     return res.redirect(`${frontendUrl}/login?error=oauth_invalid_state`);
   }
 
@@ -407,10 +418,24 @@ router.get('/microsoft/callback', async (req, res) => {
     const email = profile.mail || profile.userPrincipalName;
     if (!email) throw new Error('Brak email od Microsoft');
 
+    // Zdjęcie profilowe z konta Microsoft (jeśli ustawione) — synchronizowane przy każdym
+    // logowaniu MS, więc zmiana zdjęcia na koncie Microsoft odzwierciedla się też tutaj.
+    let photoBuffer = null;
+    try {
+      const photoRes = await fetch('https://graph.microsoft.com/v1.0/me/photo/$value', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      if (photoRes.ok) photoBuffer = Buffer.from(await photoRes.arrayBuffer());
+    } catch (photoErr) {
+      console.warn('[microsoft/callback] Brak zdjęcia profilowego:', photoErr.message);
+    }
+
     const jwt_token = await handleOAuthLogin('microsoft', profile.id, email, {
       autoProvision: true,
       imie: profile.givenName || profile.displayName || '',
       nazwisko: profile.surname || '',
+      photoBuffer,
+      remember: stateRec.remember,
     });
     res.redirect(`${frontendUrl}/auth/callback?token=${jwt_token}`);
   } catch (err) {
@@ -422,7 +447,7 @@ router.get('/microsoft/callback', async (req, res) => {
 // ============================================================
 // Wspólna logika OAuth login/linkowania konta
 // ============================================================
-async function handleOAuthLogin(provider, providerId, email, { autoProvision = false, imie = '', nazwisko = '' } = {}) {
+async function handleOAuthLogin(provider, providerId, email, { autoProvision = false, imie = '', nazwisko = '', photoBuffer = null, remember = false } = {}) {
   // 1. Szukaj istniejącego powiązania OAuth
   const [oauthRows] = await pool.query(
     `SELECT u.id, u.email, u.imie, u.nazwisko, u.status, aa.item_name as rola
@@ -483,10 +508,14 @@ async function handleOAuthLogin(provider, providerId, email, { autoProvision = f
     throw new Error('Konto nieaktywne');
   }
 
+  if (photoBuffer) {
+    try { await saveAvatarFromBuffer(user.id, photoBuffer); } catch (e) { console.warn('[oauth] Zapis zdjęcia nieudany:', e.message); }
+  }
+
   return jwt.sign(
     { id: user.id, email: user.email, rola: user.rola },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN }
+    { expiresIn: remember ? JWT_REMEMBER_EXPIRES_IN : process.env.JWT_EXPIRES_IN }
   );
 }
 

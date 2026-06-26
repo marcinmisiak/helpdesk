@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
+import Avatar from '../components/Avatar';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api');
 const API_BASE = BASE.replace('/api', '');
@@ -225,12 +226,20 @@ export default function ChatWidget() {
                 </div>
               ) : (
                 <div key={m.id} className={`flex ${m.jest_od_pracownika ? 'justify-start' : 'justify-end'}`}>
-                  <div
-                    className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                      m.jest_od_pracownika ? 'bg-gray-100 text-gray-900' : 'bg-blue-600 text-white'
-                    }`}
-                  >
-                    {m.tresc}
+                  <div className="max-w-[80%]">
+                    {m.jest_od_pracownika && m.pracownik_imie && (
+                      <div className="flex items-center gap-1.5 mb-1 px-0.5">
+                        <Avatar imie={m.imie} nazwisko={m.nazwisko} avatarPath={m.avatar_path} className="w-5 h-5 text-[9px]" />
+                        <span className="text-xs text-gray-500 font-medium">{m.pracownik_imie}</span>
+                      </div>
+                    )}
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+                        m.jest_od_pracownika ? 'bg-gray-100 text-gray-900' : 'bg-blue-600 text-white'
+                      }`}
+                    >
+                      {m.tresc}
+                    </div>
                   </div>
                 </div>
               )

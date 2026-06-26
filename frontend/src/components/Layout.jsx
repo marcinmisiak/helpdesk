@@ -10,6 +10,7 @@ import usePushNotifications from '../hooks/usePushNotifications';
 import useTheme from '../hooks/useTheme';
 import useNewTicketAlert, { isSoundMuted, toggleSoundMute } from '../hooks/useNewTicketAlert';
 import toast from 'react-hot-toast';
+import Avatar from './Avatar';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -29,25 +30,52 @@ function NavBadge({ count, color = 'red' }) {
   );
 }
 
-function UserAvatar({ imie, nazwisko }) {
-  const initials = [imie, nazwisko]
-    .filter(Boolean)
-    .map(s => s[0].toUpperCase())
-    .join('');
+function EditableAvatar({ imie, nazwisko, avatarPath, onUpload, uploading }) {
   return (
-    <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 select-none">
-      {initials || '?'}
-    </div>
+    <label className="relative group cursor-pointer flex-shrink-0 block" title="Zmień zdjęcie profilowe">
+      <Avatar imie={imie} nazwisko={nazwisko} avatarPath={avatarPath} className="w-10 h-10 text-sm" />
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onUpload(file);
+          e.target.value = '';
+        }}
+      />
+      <span className="absolute inset-0 rounded-full flex items-center justify-center text-white text-xs bg-black/0 group-hover:bg-black/40 opacity-0 group-hover:opacity-100 transition-all">
+        {uploading ? '…' : '✎'}
+      </span>
+    </label>
   );
 }
 
+const ROLE_LABEL_KEYS = { admin: 'users.role_admin', pracownik: 'users.role_worker', user: 'users.role_user' };
+
 export default function Layout({ children }) {
   const { t, i18n } = useTranslation();
-  const { user, logout, isAdmin, isKierownik } = useAuth();
+  const { user, logout, isAdmin, isKierownik, isImpersonating, stopImpersonating, updateUser } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [muted, setMuted] = useState(isSoundMuted);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const handleAvatarUpload = async (file) => {
+    setAvatarUploading(true);
+    try {
+      const form = new FormData();
+      form.append('avatar', file);
+      const { data } = await api.post('/users/me/avatar', form);
+      updateUser({ avatar_path: data.avatar_path });
+      toast.success(t('profile.avatar_updated'));
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('profile.avatar_error'));
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try { return localStorage.getItem('sidebarOpen') !== 'false'; } catch { return true; }
   });
@@ -169,14 +197,26 @@ export default function Layout({ children }) {
 
   const handleLogout = async () => { await logout(); navigate('/login'); };
 
+  const handleStopImpersonating = () => {
+    stopImpersonating();
+    navigate('/tickets');
+  };
+
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
+
+  // `moje` = przydzielone mi bezpośrednio + nieprzydzielone jeszcze nikomu tickety zespołu (`zespolowe`).
+  // Te dwa są rozłączne, więc różnica daje liczbę tych przydzielonych konkretnie mnie.
+  const mojeIndywidualne = Math.max((counts?.moje ?? 0) - (counts?.zespolowe ?? 0), 0);
 
   const navLinks = [
     ...(isAdmin ? [{ to: '/tickets', label: t('nav.tickets'), icon: '🎫', badges: [
       { count: counts?.nowe, color: 'red' },
       { count: counts?.wtoku, color: 'yellow' },
     ]}] : []),
-    { to: '/moje', label: t('nav.my_tickets'), icon: '📋', badge: counts?.moje },
+    { to: '/moje', label: t('nav.my_tickets'), icon: '📋', badges: [
+      { count: counts?.zespolowe, color: 'red' },
+      { count: mojeIndywidualne, color: 'yellow' },
+    ]},
     { to: '/czaty', label: t('nav.chats'), icon: '💬', badge: counts?.czaty },
     { to: '/odlozone', label: t('nav.deferred'), icon: '⏸️', badge: counts?.odlozone },
     { to: '/kalendarz', label: t('nav.calendar'), icon: '📅' },
@@ -203,7 +243,13 @@ export default function Layout({ children }) {
       {/* User info */}
       <div className="p-4 border-b border-blue-700">
         <div className="flex items-center gap-3">
-          <UserAvatar imie={user?.imie} nazwisko={user?.nazwisko} />
+          <EditableAvatar
+            imie={user?.imie}
+            nazwisko={user?.nazwisko}
+            avatarPath={user?.avatar_path}
+            onUpload={handleAvatarUpload}
+            uploading={avatarUploading}
+          />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white truncate">{user?.imie} {user?.nazwisko}</p>
             <p className="text-xs text-blue-300 capitalize">{user?.rola === 'admin' ? t('nav.role_admin') : t('nav.role_worker')}</p>
@@ -229,7 +275,11 @@ export default function Layout({ children }) {
           ) : (
             <>
               <div className="bg-blue-700/50 rounded-lg py-1.5 px-1">
-                <p className="text-lg font-bold text-white leading-none">{counts?.moje ?? '–'}</p>
+                <p className="text-lg font-bold text-red-400 leading-none">{counts?.zespolowe ?? '–'}</p>
+                <p className="text-[10px] text-blue-300 mt-0.5">{t('nav.team_count')}</p>
+              </div>
+              <div className="bg-blue-700/50 rounded-lg py-1.5 px-1">
+                <p className="text-lg font-bold text-yellow-300 leading-none">{mojeIndywidualne}</p>
                 <p className="text-[10px] text-blue-300 mt-0.5">{t('nav.my_count')}</p>
               </div>
               <div className="bg-blue-700/50 rounded-lg py-1.5 px-1">
@@ -323,8 +373,24 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {isImpersonating && (
+        <div className="bg-yellow-400 text-yellow-900 text-xs sm:text-sm font-medium px-4 h-9 flex items-center justify-center gap-3 sticky top-0 z-50 overflow-hidden">
+          <span className="truncate">
+            ⚠️ {t('impersonate.banner', {
+              name: `${user?.imie} ${user?.nazwisko}`,
+              role: t(ROLE_LABEL_KEYS[user?.rola] || 'users.role_user'),
+            })}
+          </span>
+          <button
+            onClick={handleStopImpersonating}
+            className="underline font-semibold hover:text-yellow-700 transition-colors flex-shrink-0 whitespace-nowrap"
+          >
+            {t('impersonate.return')}
+          </button>
+        </div>
+      )}
       {/* ── Topbar ──────────────────────────────────────────────── */}
-      <header className="bg-blue-800 text-white shadow-lg sticky top-0 z-40 h-14 flex items-center px-4 gap-3">
+      <header className={`bg-blue-800 text-white shadow-lg sticky z-40 h-14 flex items-center px-4 gap-3 ${isImpersonating ? 'top-9' : 'top-0'}`}>
         <button
           onClick={toggleSidebar}
           className="p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
@@ -368,7 +434,7 @@ export default function Layout({ children }) {
 
         <aside
           className={`
-            fixed top-14 left-0 bottom-0 z-40 w-60 bg-blue-800 border-r border-blue-700
+            fixed ${isImpersonating ? 'top-[5.75rem]' : 'top-14'} left-0 bottom-0 z-40 w-60 bg-blue-800 border-r border-blue-700
             flex flex-col transition-transform duration-200 ease-in-out
             ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           `}

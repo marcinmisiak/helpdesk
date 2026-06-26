@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 // POST /api/kanaly-czatu
 router.post('/', requireAdmin, async (req, res) => {
   const {
-    nazwa, zespol_id, typ, dozwolone_domeny, powitanie,
+    nazwa, zespol_id, typ, dozwolone_domeny, powitanie, notification_email,
     imap_server, imap_port, imap_login, imap_password, imap_path,
     ms_graph_enabled, ms_graph_mailbox,
   } = req.body;
@@ -40,11 +40,12 @@ router.post('/', requireAdmin, async (req, res) => {
     const channelKey = crypto.randomUUID();
     const [result] = await pool.query(
       `INSERT INTO kanal_czatu
-         (channel_key, nazwa, zespol_id, typ, dozwolone_domeny, powitanie,
+         (channel_key, nazwa, zespol_id, typ, dozwolone_domeny, powitanie, notification_email,
           imap_server, imap_port, imap_login, imap_password, imap_path,
           ms_graph_enabled, ms_graph_mailbox, aktywny, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       [channelKey, nazwa.trim(), zespol_id, typ || 'chat', dozwolone_domeny?.trim() || null, powitanie?.trim() || null,
+       notification_email?.trim() || null,
        imap_server?.trim() || null, imap_port || null, imap_login?.trim() || null, imap_password || null, imap_path?.trim() || null,
        ms_graph_enabled ? 1 : 0, ms_graph_mailbox?.trim() || null,
        now, now]
@@ -58,7 +59,7 @@ router.post('/', requireAdmin, async (req, res) => {
 // PUT /api/kanaly-czatu/:id
 router.put('/:id', requireAdmin, async (req, res) => {
   const {
-    nazwa, zespol_id, typ, dozwolone_domeny, powitanie, aktywny,
+    nazwa, zespol_id, typ, dozwolone_domeny, powitanie, aktywny, notification_email,
     imap_server, imap_port, imap_login, imap_password, imap_path,
     ms_graph_enabled, ms_graph_mailbox,
   } = req.body;
@@ -77,6 +78,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
     if (typ !== undefined) { updates.push('typ = ?'); values.push(typ); }
     if (dozwolone_domeny !== undefined) { updates.push('dozwolone_domeny = ?'); values.push(dozwolone_domeny?.trim() || null); }
     if (powitanie !== undefined) { updates.push('powitanie = ?'); values.push(powitanie?.trim() || null); }
+    if (notification_email !== undefined) { updates.push('notification_email = ?'); values.push(notification_email?.trim() || null); }
     if (aktywny !== undefined) { updates.push('aktywny = ?'); values.push(aktywny ? 1 : 0); }
     if (imap_server !== undefined) { updates.push('imap_server = ?'); values.push(imap_server?.trim() || null); }
     if (imap_port !== undefined) { updates.push('imap_port = ?'); values.push(imap_port || null); }

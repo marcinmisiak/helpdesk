@@ -11,7 +11,7 @@ async function authenticate(req, res, next) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const [rows] = await pool.query(
-      `SELECT u.id, u.email, u.imie, u.nazwisko, u.status, u.language, aa.item_name as rola,
+      `SELECT u.id, u.email, u.imie, u.nazwisko, u.status, u.language, u.avatar_path, aa.item_name as rola,
               (SELECT GROUP_CONCAT(zespol_id) FROM zespol_user WHERE user_id = u.id AND is_kierownik = 1) as kierownik_zespol_ids_raw
        FROM user u LEFT JOIN auth_assignment aa ON aa.user_id = u.id WHERE u.id = ?`,
       [decoded.id]

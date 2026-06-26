@@ -3,8 +3,11 @@
 module.exports = {
   // Subjects
   subject_new_ticket: '[{appName}] Нова заявка #{numer}',
+  subject_new_ticket_channel: '[{appName}] Нова заявка #{numer} — команда {team}',
   subject_unassigned_single: '[{appName}] {count} заявка без відповідального — потребує призначення',
   subject_unassigned_plural: '[{appName}] {count} заявок без відповідального — потребують призначення',
+  subject_unassigned_channel_single: '[{appName}] {count} заявка без відповідального в команді {team}',
+  subject_unassigned_channel_plural: '[{appName}] {count} заявок без відповідального в команді {team}',
   subject_pending_single: '[{appName}] Нагадування: {count} заявка очікує відповіді',
   subject_pending_plural: '[{appName}] Нагадування: {count} заявок очікують відповіді',
   subject_close_reminder_with_subject: '[{appName}] Заявку #{numer} вирішено? — {subject}',
@@ -21,11 +24,14 @@ module.exports = {
   greeting_formal_name: 'Шановний/-а {name},',
 
   new_ticket_intro: 'У системі підтримки отримано нову заявку (джерело: <strong>{source}</strong>).',
+  new_ticket_channel_intro: 'До команди <strong>{team}</strong> надійшла нова заявка (джерело: <strong>{source}</strong>). Наразі ніхто з команди не увійшов у систему.',
   source_web_form: 'веб-форма',
   source_email: 'електронна пошта',
+  source_live_chat: 'чат',
   col_ticket_no: 'Номер заявки',
   col_from: 'Від',
   col_subject: 'Тема',
+  col_team: 'Команда',
   col_assigned_by: 'Призначив',
   col_removed_by: 'Видалив',
   btn_view_ticket: 'Переглянути заявку',
@@ -33,6 +39,7 @@ module.exports = {
   btn_view_my: 'Переглянути мої заявки',
 
   unassigned_intro: 'У системі є <strong>{count} {unit}</strong> без відповідального вже більше {hours} год.',
+  unassigned_channel_intro: 'У команді <strong>{team}</strong> є <strong>{count} {unit}</strong> без відповідального вже більше {hours} год.',
   unassigned_unit_1: 'заявка',
   unassigned_unit_234: 'заявки',
   unassigned_unit_many: 'заявок',

@@ -3,8 +3,11 @@
 module.exports = {
   // Subjects
   subject_new_ticket: '[{appName}] New ticket #{numer}',
+  subject_new_ticket_channel: '[{appName}] New ticket #{numer} — team {team}',
   subject_unassigned_single: '[{appName}] {count} unassigned ticket — requires assignment',
   subject_unassigned_plural: '[{appName}] {count} unassigned tickets — require assignment',
+  subject_unassigned_channel_single: '[{appName}] {count} unassigned ticket in team {team}',
+  subject_unassigned_channel_plural: '[{appName}] {count} unassigned tickets in team {team}',
   subject_pending_single: '[{appName}] Reminder: {count} ticket waiting for reply',
   subject_pending_plural: '[{appName}] Reminder: {count} tickets waiting for reply',
   subject_close_reminder_with_subject: '[{appName}] Has your ticket #{numer} been resolved? — {subject}',
@@ -21,11 +24,14 @@ module.exports = {
   greeting_formal_name: 'Dear {name},',
 
   new_ticket_intro: 'A new ticket has been received in the help desk system (source: <strong>{source}</strong>).',
+  new_ticket_channel_intro: 'A new ticket has been received for team <strong>{team}</strong> (source: <strong>{source}</strong>). No one from the team is currently logged in.',
   source_web_form: 'web form',
   source_email: 'email',
+  source_live_chat: 'live chat',
   col_ticket_no: 'Ticket no.',
   col_from: 'From',
   col_subject: 'Subject',
+  col_team: 'Team',
   col_assigned_by: 'Assigned by',
   col_removed_by: 'Removed by',
   btn_view_ticket: 'View ticket',
@@ -33,6 +39,7 @@ module.exports = {
   btn_view_my: 'View my tickets',
 
   unassigned_intro: 'There {count_verb} <strong>{count} {unit}</strong> without an assigned agent for more than {hours} hours.',
+  unassigned_channel_intro: 'Team <strong>{team}</strong> has <strong>{count} {unit}</strong> without an assigned agent for more than {hours} hours.',
   unassigned_unit_1: 'ticket',
   unassigned_unit_234: 'tickets',
   unassigned_unit_many: 'tickets',

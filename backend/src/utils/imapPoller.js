@@ -331,8 +331,12 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
 
   const now = Math.floor(Date.now() / 1000);
 
-  const saveText = settings?.strip_quoted_reply ? stripQuotedText(text) : text;
-  const saveHtml = settings?.strip_quoted_reply ? stripQuotedHtml(html) : html;
+  // Cytowaną/przekazaną treść obcinamy tylko przy dopasowaniu do ISTNIEJĄCEGO ticketu —
+  // to tam "cytat" to faktycznie powtórzona wcześniejsza wiadomość. Dla nowego ticketu
+  // (brak dopasowania) to, co wygląda jak cytat (np. treść przekazanego/PD: maila), JEST
+  // właściwą treścią zgłoszenia i nie może być ucinane.
+  const saveText = (ticketId && settings?.strip_quoted_reply) ? stripQuotedText(text) : text;
+  const saveHtml = (ticketId && settings?.strip_quoted_reply) ? stripQuotedHtml(html) : html;
 
   if (ticketId) {
     const incomingMsgId = messageId ? messageId.replace(/[<>]/g, '') : null;
@@ -431,15 +435,17 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
       }).catch(() => {});
     }
 
-    // notifyAdminsNewTicket: siatka bezpieczeństwa "nikt nie czyta push" (sprawdza globalnie
-    // czy jakikolwiek admin jest online, nie per zespół) — celowo zostaje bez zmian dla obu
-    // ścieżek, to nie jest główny mechanizm powiadomień.
+    // notifyAdminsNewTicket: siatka bezpieczeństwa "nikt nie czyta push". Dla kanału z
+    // przypisanym zespołem i notification_email mail idzie tam (sprawdzane per zespół);
+    // w przeciwnym razie zachowanie jak dawniej — globalna obecność adminów + mail do adminów.
     notifyAdminsNewTicket({
       ticketId: result.insertId,
       numer,
       from,
       subject,
       source: 'email',
+      zespolId: channel?.zespolId,
+      channelEmail: channel?.notificationEmail,
     }).catch(() => {});
 
     classifyAndSave(result.insertId, { subject, body: text, from }).catch(() => {});
@@ -695,12 +701,12 @@ async function cleanOldGraphMessages(settings, days) {
 // błąd jednego kanału (np. złe dane logowania) nie przerywa innych ani głównej skrzynki.
 async function pollEmailChannels(globalSettings) {
   const [channels] = await pool.query(
-    `SELECT id, zespol_id, imap_server, imap_port, imap_login, imap_password, imap_path,
+    `SELECT id, zespol_id, notification_email, imap_server, imap_port, imap_login, imap_password, imap_path,
             ms_graph_enabled, ms_graph_mailbox
      FROM kanal_czatu WHERE typ = 'email' AND aktywny = 1`
   );
   for (const ch of channels) {
-    const channel = { id: ch.id, zespolId: ch.zespol_id };
+    const channel = { id: ch.id, zespolId: ch.zespol_id, notificationEmail: ch.notification_email };
 
     if (ch.ms_graph_enabled) {
       // Skrzynka Microsoft 365 — używa współdzielonej aplikacji Azure skonfigurowanej

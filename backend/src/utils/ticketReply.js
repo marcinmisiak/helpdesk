@@ -3,6 +3,7 @@ const mailer = require('./mailer');
 const { notifyUsers } = require('./webpush');
 const { maybeSendCsatSurvey } = require('./csat');
 const messengerClient = require('./messengerClient');
+const { getSiteUrl } = require('./siteUrl');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -23,6 +24,7 @@ async function sendTicketReply(ticketId, {
   actorUserId = null,
   actorEmail = null,
   actorLabel = 'Automatyzacja',
+  actorAvatarPath = null,
   typ,
 }) {
   const now = Math.floor(Date.now() / 1000);
@@ -121,8 +123,15 @@ async function sendTicketReply(ticketId, {
         contentType: f.mimetype,
       }));
 
+      // Pokazujemy zgłaszającemu kto konkretnie odpisał (zdjęcie + imię/nazwisko) — tylko dla
+      // prawdziwego pracownika (actorUserId), nie dla automatyzacji (n8n, brak konta/zdjęcia).
+      const staffName = actorUserId ? actorLabel : null;
+      const staffAvatarUrl = actorUserId && actorAvatarPath
+        ? `${(await getSiteUrl())}/pliki/${actorAvatarPath}`
+        : null;
+
       console.log(`[Mail] Wysyłam odpowiedź na ticket #${ticket.numer} do: ${to}, temat: ${subject}, załączników: ${emailAttachments.length}`);
-      const sentMsgId = await mailer.sendReply({ to, cc, subject, html: emailHtml, tresc: emailTresc, attachments: emailAttachments });
+      const sentMsgId = await mailer.sendReply({ to, cc, subject, html: emailHtml, tresc: emailTresc, attachments: emailAttachments, staffName, staffAvatarUrl });
       console.log(`[Mail] Wysłano pomyślnie do ${to}`);
       if (sentMsgId) {
         await pool.query('UPDATE korespondencja SET message_id = ? WHERE id = ?', [sentMsgId, kResult.insertId]);

@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { rateLimit } = require('express-rate-limit');
 const pool = require('../config/db');
 const { notifyUsers } = require('../utils/webpush');
+const { notifyAdminsNewTicket } = require('../utils/mailer');
 const { normalizePriority, computeDeadlines } = require('../utils/sla');
 const { getSiteUrl } = require('../utils/siteUrl');
 const { classifyAndSave } = require('../utils/groqClassifier');
@@ -80,7 +81,7 @@ router.post('/start', startLimiter, async (req, res) => {
 
   try {
     const [[kanal]] = await pool.query(
-      'SELECT id, zespol_id, dozwolone_domeny FROM kanal_czatu WHERE channel_key = ? AND aktywny = 1',
+      'SELECT id, zespol_id, dozwolone_domeny, notification_email FROM kanal_czatu WHERE channel_key = ? AND aktywny = 1',
       [channel_key]
     );
     if (!kanal) return res.status(404).json({ error: 'Kanał czatu nie został znaleziony.' });
@@ -123,12 +124,40 @@ router.post('/start', startLimiter, async (req, res) => {
        `<p>Możesz śledzić tę rozmowę i odpowiadać na nią pod tym adresem: <a href="${statusLink}">${statusLink}</a></p>`]
     );
 
+    // Jeśli odwiedzający nie podał emaila w formularzu startowym, dopytaj o niego automatycznie
+    // na czacie (osobna wiadomość systemowa, sekundę później, żeby zachować kolejność wątku).
+    if (!email?.trim()) {
+      const emailPrompt = 'Aby ułatwić nam kontakt z Tobą, prosimy o podanie adresu e-mail w odpowiedzi.';
+      await pool.query(
+        `INSERT INTO korespondencja
+           (ticket_id, data, created_by, updated_by, created_at, updated_at, tresc, html, message_to, message_cc, message_from, typ, przeczytane)
+         VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, '', '', 'System', 'system', 1)`,
+        [ticketId, now + 1, now + 1, now + 1, emailPrompt, `<p>${emailPrompt}</p>`]
+      );
+    }
+
     const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [kanal.zespol_id]);
     notifyUsers(members.map((m) => m.user_id), {
       title: '💬 Nowa rozmowa na czacie',
       body: tresc.trim().slice(0, 120),
       url: `/czaty/${ticketId}`,
     }).catch(() => {});
+
+    // Siatka bezpieczeństwa "nikt nie czyta push" — tylko gdy kanał ma skonfigurowany
+    // notification_email; bez tego pola czat zostaje przy samym push jak dawniej (nie ma
+    // tu sensownego adresata zastępczego — w przeciwieństwie do e-maila, gdzie zawsze
+    // zostają admini).
+    if (kanal.notification_email) {
+      notifyAdminsNewTicket({
+        ticketId,
+        numer,
+        from: messageFrom,
+        subject: 'Rozmowa na czacie',
+        source: 'live_chat',
+        zespolId: kanal.zespol_id,
+        channelEmail: kanal.notification_email,
+      }).catch(() => {});
+    }
 
     // Ta sama klasyfikacja AI co przy zgłoszeniach z formularza/e-maila — spam zostaje
     // automatycznie otagowany i odfiltrowany z głównej kolejki (GET /tickets już to pomija).
@@ -162,7 +191,7 @@ router.get('/:token/messages', pollLimiter, async (req, res) => {
     if (!ticket) return res.status(404).json({ error: 'Rozmowa nie została znaleziona.' });
 
     const [korespondencja] = await pool.query(
-      `SELECT k.id, k.data, k.tresc, k.typ, u.imie, u.nazwisko
+      `SELECT k.id, k.data, k.tresc, k.typ, u.imie, u.nazwisko, u.avatar_path
        FROM korespondencja k
        LEFT JOIN user u ON u.id = k.created_by
        WHERE k.ticket_id = ?
@@ -199,6 +228,10 @@ router.get('/:token/messages', pollLimiter, async (req, res) => {
           tresc: k.tresc,
           jest_od_pracownika: !!k.imie,
           jest_systemowa: k.typ === 'system',
+          pracownik_imie: k.imie ? `${k.imie} ${k.nazwisko}` : null,
+          imie: k.imie || null,
+          nazwisko: k.imie ? k.nazwisko : null,
+          avatar_path: k.imie ? k.avatar_path : null,
         })),
       ],
       pliki: pliki.map((p) => ({ id: p.id, originalname: p.originalname, filepath: p.filepath })),

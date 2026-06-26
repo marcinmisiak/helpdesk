@@ -18,6 +18,7 @@
     "new_count": "New",
     "inprogress_count": "In progress",
     "my_count": "Mine",
+    "team_count": "Team",
     "deferred_count": "Defer.",
     "role_admin": "👑 Administrator",
     "role_worker": "🔧 Worker"
@@ -63,6 +64,7 @@
     "email": "Email",
     "email_placeholder": "you@example.com",
     "password": "Password",
+    "remember_me": "Remember me",
     "forgot_password": "Forgot password",
     "submit": "Sign In",
     "submitting": "Signing in...",
@@ -272,6 +274,12 @@
     "online": "Online",
     "offline": "Offline",
     "edit": "Edit",
+    "impersonate": "Log in as",
+    "impersonate_error": "Failed to log in as this user",
+    "change_photo": "Change photo",
+    "avatar_hint": "Click the photo to change it",
+    "avatar_updated": "Photo updated",
+    "avatar_error": "Failed to save photo",
     "modal_edit_title": "Edit User",
     "modal_new_title": "New User",
     "field_first_name": "First Name",
@@ -290,6 +298,14 @@
     "created": "User created",
     "error_no_password": "Please enter a password",
     "error_save": "Save error"
+  },
+  "impersonate": {
+    "banner": "You are logged in as: {{name}} with role {{role}}",
+    "return": "Return to my account"
+  },
+  "profile": {
+    "avatar_updated": "Profile photo updated",
+    "avatar_error": "Failed to save photo"
   },
   "templates": {
     "title": "Reply Templates",
@@ -380,6 +396,8 @@
     "field_type": "Channel type",
     "field_type_chat": "Chat",
     "field_type_email": "Email",
+    "field_notification_email": "Channel notification email",
+    "field_notification_email_hint": "When no one from the team is logged in, the new-ticket notification (and the daily unclaimed-ticket reminder) is sent here instead of to admins. Leave empty to keep the previous behavior.",
     "field_imap_server": "IMAP server",
     "field_imap_port": "IMAP port",
     "field_imap_login": "Login (email address)",
