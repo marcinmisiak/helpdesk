@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 let sharp; try { sharp = require('sharp'); } catch { sharp = null; }
 const { normalizePriority, computeDeadlines } = require('./sla');
+const { extractEmail, checkSenderStatus } = require('./spamBlocklist');
 
 const DOCS_DIR = path.join(__dirname, '../../docs');
 
@@ -44,6 +45,11 @@ Zasady klasyfikacji:
 - normalne (priority 2): typowe zgłoszenia serwisowe, prośby o pomoc
 - pilne (priority 1): awaria, brak dostępu, blokada pracy, błąd krytyczny
 
+Ważne: wiadomość OPISUJĄCA problem (np. wspominająca słowa "system", "automatycznie",
+"aplikacja") to NIE jest spam — spamem jest WYŁĄCZNIE wiadomość, która sama w sobie jest
+niechcianą automatyczną/marketingową treścią wysłaną do zgłaszającego, nie wiadomość OD
+zgłaszającego opisująca jego problem. W razie wątpliwości wybierz "niskie", nie "spam".
+
 Odpowiedz WYŁĄCZNIE poprawnym JSON, bez dodatkowego tekstu.`,
         },
         { role: 'user', content },
@@ -66,7 +72,25 @@ Odpowiedz WYŁĄCZNIE poprawnym JSON, bez dodatkowego tekstu.`,
   }
 }
 
-async function classifyAndSave(ticketId, { subject, body, from }) {
+async function classifyAndSave(ticketId, { subject, body, from, ip }) {
+  const email = extractEmail(from);
+  const senderStatus = await checkSenderStatus({ email, ip });
+
+  if (senderStatus) {
+    try {
+      if (senderStatus.typ === 'zaufany') {
+        await pool.query("UPDATE ticket SET ai_tag = 'normalne', ai_reason = NULL WHERE id = ?", [ticketId]);
+        console.log(`[Spam] Ticket #${ticketId} → zaufany nadawca, AI nie zapytane`);
+      } else {
+        await pool.query('UPDATE ticket SET ai_tag = ?, ai_reason = ? WHERE id = ?', ['spam', senderStatus.reason, ticketId]);
+        console.log(`[Spam] Ticket #${ticketId} → spam (${senderStatus.reason}), AI nie zapytane`);
+      }
+    } catch (err) {
+      console.error('[Spam] Błąd zapisu statusu nadawcy:', err.message);
+    }
+    return;
+  }
+
   const result = await classifyTicket({ subject, body, from });
   if (!result?.tag) return;
 
@@ -78,7 +102,9 @@ async function classifyAndSave(ticketId, { subject, body, from }) {
       [tag, reason, ticketId]
     );
 
-    if (priority) {
+    // Spam jest filtrowany z głównej kolejki niezależnie od priority — nie nadpisuj SLA,
+    // inaczej zostaje "zamrożone" na błędnym priorytecie po późniejszym odznaczeniu spamu.
+    if (priority && tag !== 'spam') {
       const now = Math.floor(Date.now() / 1000);
       const [[ticket]] = await pool.query('SELECT data_utworzenia FROM ticket WHERE id = ?', [ticketId]);
       const deadlines = computeDeadlines(ticket?.data_utworzenia || now, normalizePriority(priority));

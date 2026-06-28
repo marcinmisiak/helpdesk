@@ -197,10 +197,10 @@ router.post('/zgloszenie', submitLimiter, (req, res, next) => {
     const [result] = await pool.query(
       `INSERT INTO ticket
          (numer, message_from, message_to, message_subject, tresc, status,
-          data_utworzenia, odlozony, podswietl, kategoria_id, zrodlo)
-       VALUES (?, ?, '', ?, ?, 1, ?, 0, 1, ?, 'web_form')`,
+          data_utworzenia, odlozony, podswietl, kategoria_id, zrodlo, zrodlo_ip)
+       VALUES (?, ?, '', ?, ?, 1, ?, 0, 1, ?, 'web_form', ?)`,
       [numer, messageFrom, messageSubject, opis.trim(), now,
-       kategoria_id || null]
+       kategoria_id || null, req.ip]
     );
 
     const ticketId = result.insertId;
@@ -234,6 +234,7 @@ router.post('/zgloszenie', submitLimiter, (req, res, next) => {
       subject: messageSubject,
       body: opis,
       from: messageFrom,
+      ip: req.ip,
     }).catch(() => {});
 
     // Email do adminów o nowym zgłoszeniu

@@ -12,6 +12,7 @@ const { notifyAllAdmins, notifyUsers } = require('../utils/webpush');
 const { getSiteUrl } = require('../utils/siteUrl');
 const { normalizePriority, computeDeadlines, enrichTicketSla } = require('../utils/sla');
 const { classifyAndSave, generateReply } = require('../utils/groqClassifier');
+const { extractEmail, rememberSenderStatus } = require('../utils/spamBlocklist');
 const { maybeSendCsatSurvey } = require('../utils/csat');
 const { sendTicketReply } = require('../utils/ticketReply');
 const { sendWebhookEvent } = require('../utils/webhookClient');
@@ -233,6 +234,51 @@ router.delete('/spam/wszystkie', requireAdmin, async (req, res) => {
     const [rows] = await pool.query("SELECT id FROM ticket WHERE ai_tag = 'spam'");
     const deleted = await deleteTicketsCascade(rows.map(r => r.id));
     res.json({ success: true, deleted });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/tickets/spam-blocklist — lista lokalnej bazy spamerów/zaufanych
+router.get('/spam-blocklist', requireAdmin, async (req, res) => {
+  try {
+    const { typ = 'spam', page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+    const [rows] = await pool.query(
+      'SELECT * FROM spam_blocklist WHERE typ = ? ORDER BY id DESC LIMIT ? OFFSET ?',
+      [typ, parseInt(limit), parseInt(offset)]
+    );
+    const [[{ total }]] = await pool.query('SELECT COUNT(*) as total FROM spam_blocklist WHERE typ = ?', [typ]);
+    res.json({ data: rows, total, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/tickets/spam-blocklist — ręczne dodanie wpisu
+router.post('/spam-blocklist', requireAdmin, async (req, res) => {
+  try {
+    const { typ = 'spam', email, ip, reason } = req.body;
+    if (typ !== 'spam' && typ !== 'zaufany') return res.status(400).json({ error: 'Nieprawidłowy typ' });
+    if (!email?.trim() && !ip?.trim()) return res.status(400).json({ error: 'Podaj email lub IP' });
+
+    await rememberSenderStatus({
+      email: email?.trim().toLowerCase() || null,
+      ip: ip?.trim() || null,
+      typ,
+      reason: reason?.trim() || 'Dodane ręcznie',
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/tickets/spam-blocklist/:id — usuń wpis z lokalnej bazy
+router.delete('/spam-blocklist/:id', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM spam_blocklist WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1199,7 +1245,19 @@ router.post('/:id/classify', async (req, res) => {
 // POST /api/tickets/:id/nie-spam — cofnij oznaczenie jako spam
 router.post('/:id/nie-spam', requireAdmin, async (req, res) => {
   try {
-    await pool.query("UPDATE ticket SET ai_tag = 'normalne', ai_reason = NULL WHERE id = ?", [req.params.id]);
+    const [[ticket]] = await pool.query('SELECT message_from, data_utworzenia FROM ticket WHERE id = ?', [req.params.id]);
+    if (!ticket) return res.status(404).json({ error: 'Ticket nie znaleziony' });
+
+    const deadlines = computeDeadlines(ticket.data_utworzenia, normalizePriority(2));
+    await pool.query(
+      `UPDATE ticket SET ai_tag = 'normalne', ai_reason = NULL, priority = 2,
+         sla_response_deadline = ?, sla_resolution_deadline = ? WHERE id = ?`,
+      [deadlines.responseDeadline, deadlines.resolutionDeadline, req.params.id]
+    );
+
+    const email = extractEmail(ticket.message_from);
+    await rememberSenderStatus({ email, typ: 'zaufany', reason: 'Oznaczone ręcznie jako nie-spam', ticketId: req.params.id });
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1209,7 +1267,14 @@ router.post('/:id/nie-spam', requireAdmin, async (req, res) => {
 // POST /api/tickets/:id/spam — oznacz ręcznie jako spam
 router.post('/:id/spam', async (req, res) => {
   try {
+    const [[ticket]] = await pool.query('SELECT message_from, zrodlo_ip FROM ticket WHERE id = ?', [req.params.id]);
+    if (!ticket) return res.status(404).json({ error: 'Ticket nie znaleziony' });
+
     await pool.query("UPDATE ticket SET ai_tag = 'spam', ai_reason = ? WHERE id = ?", ['Oznaczone ręcznie jako spam', req.params.id]);
+
+    const email = extractEmail(ticket.message_from);
+    await rememberSenderStatus({ email, ip: ticket.zrodlo_ip, typ: 'spam', reason: 'Oznaczone ręcznie jako spam', ticketId: req.params.id });
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -6,6 +6,108 @@ import useDateLocale from '../i18n/useDateLocale';
 import api from '../api/client';
 import toast from 'react-hot-toast';
 
+function SenderList({ typ }) {
+  const { t } = useTranslation();
+  const locale = useDateLocale();
+  const qc = useQueryClient();
+  const ns = typ === 'spam' ? 'spam.blocklist' : 'spam.trusted';
+  const [form, setForm] = useState({ email: '', ip: '', reason: '' });
+
+  const formatDate = (ts) => {
+    if (!ts) return '—';
+    return format(new Date(ts * 1000), 'dd.MM.yyyy HH:mm', { locale });
+  };
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['spam-blocklist', typ],
+    queryFn: () => api.get('/tickets/spam-blocklist', { params: { typ, limit: 100 } }).then(r => r.data),
+  });
+
+  const entries = data?.data || [];
+
+  const remove = async (id) => {
+    if (!confirm(t(`${ns}.confirm_remove`))) return;
+    await api.delete(`/tickets/spam-blocklist/${id}`);
+    toast.success(t(`${ns}.removed`));
+    qc.invalidateQueries(['spam-blocklist', typ]);
+  };
+
+  const add = async (e) => {
+    e.preventDefault();
+    if (!form.email.trim() && !form.ip.trim()) return;
+    await api.post('/tickets/spam-blocklist', { typ, ...form });
+    toast.success(t(`${ns}.added`));
+    setForm({ email: '', ip: '', reason: '' });
+    qc.invalidateQueries(['spam-blocklist', typ]);
+  };
+
+  return (
+    <div className="card p-0 overflow-hidden mt-6">
+      <div className="px-4 py-3 border-b bg-gray-50">
+        <h3 className="font-semibold text-gray-900">{t(`${ns}.title`)}</h3>
+        {typ === 'zaufany' && <p className="text-xs text-gray-500 mt-1">{t('spam.trusted.description')}</p>}
+      </div>
+
+      {typ === 'spam' && (
+        <form onSubmit={add} className="flex flex-wrap gap-2 px-4 py-3 border-b bg-gray-50/50">
+          <input
+            className="input flex-1 min-w-[160px]"
+            placeholder={t('spam.blocklist.add_email_placeholder')}
+            value={form.email}
+            onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
+          />
+          <input
+            className="input flex-1 min-w-[120px]"
+            placeholder={t('spam.blocklist.add_ip_placeholder')}
+            value={form.ip}
+            onChange={(e) => setForm(f => ({ ...f, ip: e.target.value }))}
+          />
+          <input
+            className="input flex-1 min-w-[160px]"
+            placeholder={t('spam.blocklist.add_reason_placeholder')}
+            value={form.reason}
+            onChange={(e) => setForm(f => ({ ...f, reason: e.target.value }))}
+          />
+          <button type="submit" className="btn-secondary btn-sm">{t('spam.blocklist.add_button')}</button>
+        </form>
+      )}
+
+      {isLoading ? (
+        <div className="text-center py-8 text-gray-500 text-sm">{t('spam.loading')}</div>
+      ) : entries.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">{t(`${ns}.empty`)}</div>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium text-gray-600">{t(`${ns}.col_email`)}</th>
+              {typ === 'spam' && <th className="px-3 py-2 text-left font-medium text-gray-600">{t('spam.blocklist.col_ip')}</th>}
+              <th className="px-3 py-2 text-left font-medium text-gray-600">{t(`${ns}.col_reason`)}</th>
+              <th className="px-3 py-2 text-left font-medium text-gray-600">{t(`${ns}.col_date`)}</th>
+              <th className="px-3 py-2 text-left font-medium text-gray-600">{t(`${ns}.col_actions`)}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {entries.map(entry => (
+              <tr key={entry.id} className="hover:bg-gray-50">
+                <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate text-xs">{entry.email || '—'}</td>
+                {typ === 'spam' && <td className="px-3 py-2 text-gray-700 text-xs">{entry.ip || '—'}</td>}
+                <td className="px-3 py-2 text-gray-500 text-xs max-w-[260px] truncate" title={entry.reason}>{entry.reason || '—'}</td>
+                <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{formatDate(entry.created_at)}</td>
+                <td className="px-3 py-2">
+                  <button onClick={() => remove(entry.id)} className="text-xs text-red-600 hover:underline">
+                    {t(`${ns}.remove`)}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export default function Spam() {
   const { t } = useTranslation();
   const locale = useDateLocale();
@@ -58,6 +160,7 @@ export default function Spam() {
     await api.post(`/tickets/${id}/nie-spam`);
     toast.success(t('spam.marked_not_spam'));
     qc.invalidateQueries(['spam']);
+    qc.invalidateQueries(['spam-blocklist']);
     refetch();
   };
 
@@ -153,6 +256,9 @@ export default function Spam() {
           )}
         </>
       )}
+
+      <SenderList typ="spam" />
+      <SenderList typ="zaufany" />
     </div>
   );
 }

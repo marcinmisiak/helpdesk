@@ -70,7 +70,8 @@
     "error_default": "Помилка входу",
     "oauth_denied": "Вхід скасовано.",
     "oauth_not_configured": "Вхід через цього провайдера не налаштовано.",
-    "oauth_error": "Помилка OAuth. Спробуйте ще раз."
+    "oauth_error": "Помилка OAuth. Спробуйте ще раз.",
+    "session_expired": "Сесія закінчилася. Увійдіть ще раз."
   },
   "forgot_password": {
     "title": "Відновлення пароля",
@@ -204,5 +205,36 @@
     "thank_you": "Дякуємо за вашу оцінку!",
     "error_choose_rating": "Оберіть оцінку",
     "error_default": "Виникла помилка. Спробуйте ще раз."
+  },
+  "spam": {
+    "blocklist": {
+      "title": "Локальна база спамерів",
+      "empty": "База порожня",
+      "col_email": "Email",
+      "col_ip": "IP",
+      "col_reason": "Причина",
+      "col_date": "Дата",
+      "col_actions": "Дії",
+      "remove": "Видалити",
+      "confirm_remove": "Видалити цей запис з бази спамерів?",
+      "removed": "Запис видалено",
+      "add_email_placeholder": "Email",
+      "add_ip_placeholder": "IP (необов'язково)",
+      "add_reason_placeholder": "Причина (необов'язково)",
+      "add_button": "Додати",
+      "added": "Додано до бази спамерів"
+    },
+    "trusted": {
+      "title": "Довірені відправники",
+      "description": "Email-адреси, вручну позначені як \"не спам\" — наступні заявки з цих адрес одразу отримують статус звичайних, без запиту до AI.",
+      "empty": "Немає довірених відправників",
+      "col_email": "Email",
+      "col_reason": "Причина",
+      "col_date": "Дата",
+      "col_actions": "Дії",
+      "remove": "Видалити",
+      "confirm_remove": "Видалити цього відправника зі списку довірених?",
+      "removed": "Запис видалено"
+    }
   }
 }

@@ -99,10 +99,10 @@ router.post('/start', startLimiter, async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO ticket
          (numer, message_from, message_subject, tresc, status, data_utworzenia, odlozony, podswietl,
-          zrodlo, autor_token, priority, sla_response_deadline, sla_resolution_deadline)
-       VALUES (?, ?, ?, ?, 2, ?, 0, 1, 'live_chat', ?, ?, ?, ?)`,
+          zrodlo, autor_token, priority, sla_response_deadline, sla_resolution_deadline, zrodlo_ip)
+       VALUES (?, ?, ?, ?, 2, ?, 0, 1, 'live_chat', ?, ?, ?, ?, ?)`,
       [numer, messageFrom, 'Rozmowa na czacie', tresc.trim(), now, autorToken,
-       priority, deadlines.responseDeadline, deadlines.resolutionDeadline]
+       priority, deadlines.responseDeadline, deadlines.resolutionDeadline, req.ip]
     );
     const ticketId = result.insertId;
 
@@ -165,6 +165,7 @@ router.post('/start', startLimiter, async (req, res) => {
       subject: 'Rozmowa na czacie',
       body: tresc.trim(),
       from: messageFrom,
+      ip: req.ip,
     }).catch(() => {});
 
     sendWebhookEvent('ticket.created', {

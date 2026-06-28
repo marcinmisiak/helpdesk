@@ -71,7 +71,8 @@
     "error_default": "Błąd logowania",
     "oauth_denied": "Logowanie zostało anulowane.",
     "oauth_not_configured": "Logowanie przez ten provider nie jest skonfigurowane.",
-    "oauth_error": "Błąd logowania OAuth. Spróbuj ponownie."
+    "oauth_error": "Błąd logowania OAuth. Spróbuj ponownie.",
+    "session_expired": "Sesja wygasła. Zaloguj się ponownie."
   },
   "oauth_callback": {
     "signing_in": "Logowanie w toku...",
@@ -437,7 +438,36 @@
     "deleted": "Usunięto {{count}} wiadomości",
     "pagination": "Łącznie: {{total}} | Strona {{page}} z {{pages}}",
     "confirm_delete_selected": "Trwale usunąć {{count}} wiadomości?",
-    "confirm_delete_all": "Trwale usunąć WSZYSTKIE {{total}} wiadomości ze spamu?"
+    "confirm_delete_all": "Trwale usunąć WSZYSTKIE {{total}} wiadomości ze spamu?",
+    "blocklist": {
+      "title": "Lokalna baza spamerów",
+      "empty": "Baza jest pusta",
+      "col_email": "E-mail",
+      "col_ip": "IP",
+      "col_reason": "Powód",
+      "col_date": "Data",
+      "col_actions": "Akcje",
+      "remove": "Usuń",
+      "confirm_remove": "Usunąć ten wpis z bazy spamerów?",
+      "removed": "Usunięto wpis",
+      "add_email_placeholder": "E-mail",
+      "add_ip_placeholder": "IP (opcjonalnie)",
+      "add_reason_placeholder": "Powód (opcjonalnie)",
+      "add_button": "Dodaj",
+      "added": "Dodano do bazy spamerów"
+    },
+    "trusted": {
+      "title": "Zaufani nadawcy",
+      "description": "E-maile oznaczone ręcznie jako \"nie spam\" — kolejne zgłoszenia z tych adresów trafiają od razu jako normalne, bez pytania AI.",
+      "empty": "Brak zaufanych nadawców",
+      "col_email": "E-mail",
+      "col_reason": "Powód",
+      "col_date": "Data",
+      "col_actions": "Akcje",
+      "remove": "Usuń",
+      "confirm_remove": "Usunąć tego nadawcę z zaufanych?",
+      "removed": "Usunięto wpis"
+    }
   },
   "calendar": {
     "title": "Kalendarz",

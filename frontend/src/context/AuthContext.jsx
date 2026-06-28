@@ -1,19 +1,87 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import toast from 'react-hot-toast';
 import api from '../api/client';
 
 const AuthContext = createContext(null);
 
 const ADMIN_TOKEN_KEY = 'adminToken';
 const ADMIN_USER_KEY = 'adminUser';
+const MAX_TIMEOUT_MS = 2 ** 31 - 1; // maks. bezpieczny delay dla setTimeout (~24.8 dnia)
+
+// Odczytuje `exp` (sekundy epoch) z payloadu JWT bez weryfikacji podpisu —
+// wystarcza do lokalnego wykrycia momentu wygaśnięcia, podpis i tak waliduje backend.
+function getTokenExpiryMs(token) {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+    const { exp } = JSON.parse(atob(padded));
+    return exp ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }) {
+  const { t } = useTranslation();
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
   });
   const [impersonator, setImpersonator] = useState(() => {
     try { return JSON.parse(localStorage.getItem(ADMIN_USER_KEY)); } catch { return null; }
   });
+  const expiryTimerRef = useRef(null);
+
+  // Bez tego sesja wygasająca w tle (token przestaje być ważny, a użytkownik nic
+  // nie klika) byłaby niewidoczna do następnego zapytania do API — menu/Layout
+  // wyglądałyby jak zalogowane aż do pierwszego 401. Timer ustawiony na dokładny
+  // moment wygaśnięcia tokenu wylogowuje od razu, niezależnie od aktywności.
+  const clearExpiryTimer = useCallback(() => {
+    if (expiryTimerRef.current) {
+      clearTimeout(expiryTimerRef.current);
+      expiryTimerRef.current = null;
+    }
+  }, []);
+
+  const forceLogout = useCallback((reason) => {
+    clearExpiryTimer();
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    localStorage.removeItem(ADMIN_USER_KEY);
+    setImpersonator(null);
+    setUser(null);
+    if (reason === 'expired') toast.error(t('login.session_expired'));
+  }, [clearExpiryTimer, t]);
+
+  // setTimeout przyjmuje delay jako 32-bitową liczbę całkowitą — dla tokenów
+  // "zapamiętaj mnie" (do 30 dni) trzeba dzielić odliczanie na kawałki, inaczej
+  // delay > ~24.8 dni przepełnia się i timer odpala się natychmiast.
+  const scheduleExpiry = useCallback((token) => {
+    clearExpiryTimer();
+    const expiryMs = token ? getTokenExpiryMs(token) : null;
+    if (!expiryMs) return;
+
+    const tick = () => {
+      // setTimeout (nawet z 0ms, gdy token jest już przeterminowany) zamiast
+      // wywołania forceLogout tutaj bezpośrednio — unika synchronicznego
+      // setState w ciele efektu przy wywołaniu z useEffect poniżej.
+      const msLeft = Math.max(expiryMs - Date.now(), 0);
+      if (msLeft > MAX_TIMEOUT_MS) {
+        expiryTimerRef.current = setTimeout(tick, MAX_TIMEOUT_MS);
+      } else {
+        expiryTimerRef.current = setTimeout(() => forceLogout('expired'), msLeft);
+      }
+    };
+    tick();
+  }, [clearExpiryTimer, forceLogout]);
+
+  useEffect(() => {
+    scheduleExpiry(localStorage.getItem('token'));
+    return clearExpiryTimer;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const login = async (email, password, remember = false) => {
     const { data } = await api.post('/auth/login', { email, password, remember });
@@ -23,6 +91,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(data.user));
     setImpersonator(null);
     setUser(data.user);
+    scheduleExpiry(data.token);
     return data.user;
   };
 
@@ -33,12 +102,14 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(userData));
     setImpersonator(null);
     setUser(userData);
+    scheduleExpiry(token);
   };
 
   const logout = async () => {
     try { await api.post('/auth/logout'); } catch {
       // Wylogowanie lokalne ma pierwszeństwo nawet przy błędzie API.
     }
+    clearExpiryTimer();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem(ADMIN_TOKEN_KEY);
@@ -61,6 +132,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
+    scheduleExpiry(data.token);
     try { setImpersonator(JSON.parse(localStorage.getItem(ADMIN_USER_KEY))); } catch { /* noop */ }
     return data.user;
   };
@@ -74,6 +146,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem(ADMIN_TOKEN_KEY);
     localStorage.removeItem(ADMIN_USER_KEY);
     setImpersonator(null);
+    scheduleExpiry(adminToken);
     try { setUser(JSON.parse(adminUser)); } catch { setUser(null); }
   };
 

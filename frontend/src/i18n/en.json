@@ -71,7 +71,8 @@
     "error_default": "Login error",
     "oauth_denied": "Login was cancelled.",
     "oauth_not_configured": "OAuth provider is not configured.",
-    "oauth_error": "OAuth login error. Please try again."
+    "oauth_error": "OAuth login error. Please try again.",
+    "session_expired": "Your session has expired. Please sign in again."
   },
   "oauth_callback": {
     "signing_in": "Signing in...",
@@ -437,7 +438,36 @@
     "deleted": "Deleted {{count}} messages",
     "pagination": "Total: {{total}} | Page {{page}} of {{pages}}",
     "confirm_delete_selected": "Permanently delete {{count}} messages?",
-    "confirm_delete_all": "Permanently delete ALL {{total}} spam messages?"
+    "confirm_delete_all": "Permanently delete ALL {{total}} spam messages?",
+    "blocklist": {
+      "title": "Local spam blocklist",
+      "empty": "The blocklist is empty",
+      "col_email": "Email",
+      "col_ip": "IP",
+      "col_reason": "Reason",
+      "col_date": "Date",
+      "col_actions": "Actions",
+      "remove": "Remove",
+      "confirm_remove": "Remove this entry from the spam blocklist?",
+      "removed": "Entry removed",
+      "add_email_placeholder": "Email",
+      "add_ip_placeholder": "IP (optional)",
+      "add_reason_placeholder": "Reason (optional)",
+      "add_button": "Add",
+      "added": "Added to spam blocklist"
+    },
+    "trusted": {
+      "title": "Trusted senders",
+      "description": "Emails manually marked as \"not spam\" — future tickets from these addresses go straight to normal, without asking AI.",
+      "empty": "No trusted senders",
+      "col_email": "Email",
+      "col_reason": "Reason",
+      "col_date": "Date",
+      "col_actions": "Actions",
+      "remove": "Remove",
+      "confirm_remove": "Remove this sender from the trusted list?",
+      "removed": "Entry removed"
+    }
   },
   "calendar": {
     "title": "Calendar",
