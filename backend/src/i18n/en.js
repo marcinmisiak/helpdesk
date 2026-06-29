@@ -63,6 +63,10 @@ module.exports = {
   btn_reset_password: 'Reset password',
   reset_password_expire: 'The link is valid for {hours} hours. If you did not request a password reset, you can ignore this message.',
 
+  subject_status_otp: 'Access code for ticket #{numer} — {appName}',
+  status_otp_intro: 'We received an attempt to view the status of ticket <strong>#{numer}</strong>. To confirm it’s you, enter the code below on the status page:',
+  status_otp_expire: 'The code is valid for {minutes} minutes. If you did not try to view this ticket’s status, you can ignore this message.',
+
   // Ticket receipt confirmation (public form)
   subject_ticket_received: 'Confirmation of ticket receipt #{numer}',
   ticket_received_intro: 'We confirm that your request has been received by our support system.',

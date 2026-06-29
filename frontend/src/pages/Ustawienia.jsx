@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import toast from 'react-hot-toast';
+import ZewnetrzneBazyPanel from '../components/ZewnetrzneBazyPanel';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -844,7 +845,7 @@ function MessengerPanel({ form, set, setCheck }) {
   );
 }
 
-// ─── Panel webhooka n8n (automatyzacja odpowiedzi) ────────────────────────────
+// ─── Panel webhooka (automatyzacja odpowiedzi przez n8n, Make, Zapier itp.) ───
 function WebhookN8nPanel({ form, set, setCheck, setVal }) {
   const qc = useQueryClient();
   const [testing, setTesting] = useState(false);
@@ -873,7 +874,7 @@ function WebhookN8nPanel({ form, set, setCheck, setVal }) {
   };
 
   const regenerateSecret = async () => {
-    if (!confirm('Wygenerować nowy sekret? Trzeba będzie zaktualizować konfigurację w n8n.')) return;
+    if (!confirm('Wygenerować nowy sekret? Trzeba będzie zaktualizować konfigurację w systemie automatyzacji.')) return;
     setRegenerating(true);
     try {
       const { data } = await api.post('/ustawienia/webhook-regenerate-secret');
@@ -891,8 +892,8 @@ function WebhookN8nPanel({ form, set, setCheck, setVal }) {
     <div className="card border-indigo-200 dark:border-indigo-800">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-lg">🤖</span>
-          <h3 className="font-semibold">n8n — automatyzacja odpowiedzi</h3>
+          <span className="text-lg">🔗</span>
+          <h3 className="font-semibold">Webhook — automatyzacja odpowiedzi</h3>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -906,18 +907,19 @@ function WebhookN8nPanel({ form, set, setCheck, setVal }) {
       </div>
 
       <p className="text-xs text-gray-500 mb-4">
-        Gdy włączone: helpdesk wysyła zdarzenia (nowy ticket, nowa wiadomość od klienta) na adres
-        webhooka n8n, a n8n może wywołać poniższy endpoint, aby wstawić automatyczną odpowiedź do ticketu.
+        Gdy włączone: helpdesk wysyła zdarzenia (nowy ticket, nowa wiadomość od klienta) na podany
+        adres webhooka, a Twój system automatyzacji (np. n8n, Make, Zapier lub własny skrypt) może
+        wywołać poniższy endpoint, aby wstawić automatyczną odpowiedź do ticketu.
       </p>
 
       <div className={`space-y-3 ${!form.webhook_enabled ? 'opacity-50 pointer-events-none' : ''}`}>
         <div>
-          <label className="label">URL webhooka n8n (helpdesk → n8n)</label>
+          <label className="label">URL webhooka docelowego (helpdesk → automatyzacja)</label>
           <input
             value={form.webhook_url || ''}
             onChange={set('webhook_url')}
             className="input font-mono text-sm"
-            placeholder="https://n8n.twojadomena.pl/webhook/..."
+            placeholder="https://twoja-automatyzacja.pl/webhook/..."
           />
         </div>
 
@@ -938,10 +940,10 @@ function WebhookN8nPanel({ form, set, setCheck, setVal }) {
         </div>
 
         <div className="mt-3 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs text-indigo-800 dark:text-indigo-200">
-          <strong>Konfiguracja w n8n (n8n → helpdesk):</strong>
+          <strong>Konfiguracja w Twoim systemie automatyzacji (automatyzacja → helpdesk):</strong>
           <ol className="mt-1 ml-4 list-decimal space-y-1">
             <li>
-              URL do wywołania (HTTP Request node, metoda POST):
+              Adres jest stały niezależnie od użytego narzędzia (n8n, Make, Zapier, własny skrypt...) — wywołaj go metodą POST:
               <div className="flex items-center gap-1 mt-0.5">
                 <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded break-all flex-1">{replyUrl}</code>
                 <button type="button" onClick={() => copy(replyUrl)} className="text-indigo-600 dark:text-indigo-300 hover:underline shrink-0">kopiuj</button>
@@ -956,7 +958,7 @@ function WebhookN8nPanel({ form, set, setCheck, setVal }) {
             </li>
             <li>
               Treść JSON: <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded">{'{ ticket_numer, tresc, html?, close? }'}</code>
-              {' '}— <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded">ticket_numer</code> i treść wiadomości otrzymujesz w zdarzeniu wysłanym do n8n.
+              {' '}— <code className="bg-indigo-100 dark:bg-indigo-800 px-1 rounded">ticket_numer</code> i treść wiadomości otrzymujesz w zdarzeniu wysłanym wcześniej do Twojej automatyzacji.
             </li>
           </ol>
           <button
@@ -1221,6 +1223,476 @@ function ReminderPanel({ form, set, setCheck }) {
   );
 }
 
+// ─── Statystyki zajętości miejsca (baza danych + pliki) ──────────────────────
+function formatBytes(bytes) {
+  if (bytes == null) return '—';
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+  if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return bytes + ' B';
+}
+
+function StorageStatsPanel() {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/ustawienia/storage-stats');
+      setStats(data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Błąd pobierania statystyk');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold">Zajętość miejsca</h3>
+        <button
+          type="button"
+          onClick={load}
+          disabled={loading}
+          className="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+        >
+          {loading ? 'Pobieranie...' : stats ? 'Odśwież' : 'Pokaż'}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {stats && !error && (
+        <div className="grid grid-cols-3 gap-3 text-sm">
+          <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+            <p className="text-slate-500 text-xs mb-1">Baza danych</p>
+            <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{formatBytes(stats.dbSizeBytes)}</p>
+          </div>
+          <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+            <p className="text-slate-500 text-xs mb-1">Pliki przesłane przy zgłoszeniach</p>
+            <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{formatBytes(stats.filesSizeBytes)}</p>
+          </div>
+          <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+            <p className="text-slate-500 text-xs mb-1">Wolne miejsce na dysku</p>
+            {stats.diskFreeBytes != null ? (
+              <>
+                <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{formatBytes(stats.diskFreeBytes)}</p>
+                <p className="text-slate-400 text-xs">z {formatBytes(stats.diskTotalBytes)} partycji aplikacji</p>
+              </>
+            ) : (
+              <p className="text-xs text-amber-600 dark:text-amber-400">niedostępne</p>
+            )}
+          </div>
+        </div>
+      )}
+      {!stats && !error && !loading && (
+        <p className="text-xs text-slate-400">Kliknij „Pokaż", aby odczytać zajętość bazy danych i katalogu plików.</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Panel kopii zapasowej ─────────────────────────────────────────────────────
+const BACKUP_STEP_LABELS = {
+  start: 'Przygotowanie...',
+  db: 'Eksport bazy danych...',
+  files: 'Pakowanie plików...',
+  done: 'Zakończono',
+  error: 'Błąd',
+};
+
+function BackupPanel() {
+  const qc = useQueryClient();
+  const [includeDb, setIncludeDb] = useState(true);
+  const [includeFiles, setIncludeFiles] = useState(true);
+  const prevRunning = useRef(false);
+
+  const { data: backups } = useQuery({
+    queryKey: ['backups'],
+    queryFn: () => api.get('/backup').then(r => r.data.data),
+  });
+
+  const { data: status } = useQuery({
+    queryKey: ['backup-status'],
+    queryFn: () => api.get('/backup/status').then(r => r.data),
+    refetchInterval: (query) => (query.state.data?.running ? 1000 : false),
+  });
+
+  const running = !!status?.running;
+
+  useEffect(() => {
+    if (prevRunning.current && !running) qc.invalidateQueries(['backups']);
+    prevRunning.current = running;
+  }, [running, qc]);
+
+  const start = useMutation({
+    mutationFn: () => api.post('/backup', { includeDb, includeFiles }),
+    onSuccess: () => {
+      toast.success('Kopia zapasowa rozpoczęta');
+      qc.invalidateQueries(['backup-status']);
+    },
+    onError: (err) => toast.error(err.response?.data?.error || 'Błąd uruchamiania kopii'),
+  });
+
+  const remove = async (id) => {
+    if (!confirm('Usunąć tę kopię zapasową?')) return;
+    try {
+      await api.delete(`/backup/${id}`);
+      toast.success('Usunięto');
+      qc.invalidateQueries(['backups']);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Błąd usuwania');
+    }
+  };
+
+  const download = async (id, filename) => {
+    try {
+      const res = await api.get(`/backup/${id}/download`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Błąd pobierania');
+    }
+  };
+
+  const rows = backups || [];
+
+  return (
+    <div className="card">
+      <h3 className="font-semibold mb-3">Kopia zapasowa</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Wykonuje kopię zapasową bazy danych i/lub plików przesłanych przy zgłoszeniach. Archiwa są zapisywane
+        lokalnie na serwerze — pobierz je i przechowuj w bezpiecznym miejscu poza serwerem.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-4 mb-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={includeDb} onChange={e => setIncludeDb(e.target.checked)} disabled={running} />
+          Baza danych
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={includeFiles} onChange={e => setIncludeFiles(e.target.checked)} disabled={running} />
+          Pliki przesłane przy zgłoszeniach
+        </label>
+        <button
+          type="button"
+          onClick={() => start.mutate()}
+          disabled={running || start.isPending || (!includeDb && !includeFiles)}
+          className="btn-primary btn-sm ml-auto disabled:opacity-50"
+        >
+          {running ? 'W trakcie...' : 'Wykonaj kopię zapasową'}
+        </button>
+      </div>
+
+      {running && (
+        <div className="mb-4">
+          <div className="flex justify-between text-xs text-slate-500 mb-1">
+            <span>{BACKUP_STEP_LABELS[status.step] || status.step}</span>
+            <span>{status.progress || 0}%</span>
+          </div>
+          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+            <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: `${status.progress || 0}%` }} />
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-gray-500">
+              <th className="pb-2 font-medium">Data</th>
+              <th className="pb-2 font-medium">Zakres</th>
+              <th className="pb-2 font-medium text-right">Rozmiar</th>
+              <th className="pb-2 font-medium text-center">Status</th>
+              <th className="pb-2 w-28"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.length === 0 && (
+              <tr><td colSpan={5} className="py-4 text-center text-gray-400">Brak kopii zapasowych</td></tr>
+            )}
+            {rows.map(b => (
+              <tr key={b.id}>
+                <td className="py-2">{new Date(b.started_at * 1000).toLocaleString('pl-PL')}</td>
+                <td className="py-2">{[b.include_db && 'baza', b.include_files && 'pliki'].filter(Boolean).join(' + ')}</td>
+                <td className="py-2 text-right">{b.size_bytes ? formatBytes(b.size_bytes) : '—'}</td>
+                <td className="py-2 text-center">
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full ${
+                      b.status === 'done' ? 'bg-green-100 text-green-700' : b.status === 'error' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    }`}
+                    title={b.error_message || ''}
+                  >
+                    {b.status === 'done' ? 'Gotowa' : b.status === 'error' ? 'Błąd' : 'W trakcie'}
+                  </span>
+                </td>
+                <td className="py-2">
+                  <div className="flex gap-2 justify-end">
+                    {b.status === 'done' && b.existsOnDisk && (
+                      <button onClick={() => download(b.id, b.filename)} className="text-blue-600 hover:underline text-xs">Pobierz</button>
+                    )}
+                    <button onClick={() => remove(b.id)} className="text-red-500 hover:underline text-xs">Usuń</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Panel ścieżki archiwum ─────────────────────────────────────────────────────
+function ArchivePathPanel({ archivePath }) {
+  const qc = useQueryClient();
+  const [value, setValue] = useState(archivePath || '');
+
+  const save = useMutation({
+    mutationFn: () => api.put('/ustawienia', { archive_path: value }),
+    onSuccess: () => {
+      toast.success('Ścieżka archiwum zapisana');
+      qc.invalidateQueries(['ustawienia']);
+    },
+    onError: (err) => toast.error(err.response?.data?.error || 'Błąd zapisu'),
+  });
+
+  return (
+    <div className="card mb-4">
+      <h3 className="font-semibold mb-2">Ścieżka archiwum</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Katalog na serwerze, do którego trafiają spakowane stare miesiące załączników. Musi być innym katalogiem
+        niż ścieżka przechowywania załączników (UPLOAD_DIR) — archiwum nie może być serwowane publicznie.
+      </p>
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          className="input font-mono text-sm flex-1"
+          placeholder="/var/www/html/archiwum-helpdesk"
+        />
+        <button onClick={() => save.mutate()} disabled={save.isPending} className="btn-primary btn-sm">
+          {save.isPending ? 'Zapisywanie...' : 'Zapisz'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Panel archiwizacji załączników ────────────────────────────────────────────
+function ArchiwizacjaPanel({ archivePathSet }) {
+  const qc = useQueryClient();
+  const [busyMonth, setBusyMonth] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState('');
+  const [selected, setSelected] = useState(new Set());
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['archiwum'],
+    queryFn: () => api.get('/archiwum').then(r => r.data.data),
+  });
+
+  const rows = data || [];
+  const selectable = rows.filter(m => !m.archived && !m.current);
+  const busy = busyMonth !== null || bulkBusy;
+
+  const toggleSelected = (month) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(month) ? next.delete(month) : next.add(month);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelected(prev =>
+      prev.size === selectable.length ? new Set() : new Set(selectable.map(m => m.month))
+    );
+  };
+
+  const archiveMonth = async (month) => {
+    setBusyMonth(month);
+    try {
+      await api.post(`/archiwum/${month}/archive`);
+      toast.success(`Zarchiwizowano ${month}`);
+      qc.invalidateQueries(['archiwum']);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Błąd archiwizacji');
+    } finally {
+      setBusyMonth(null);
+    }
+  };
+
+  const restoreMonth = async (month) => {
+    setBusyMonth(month);
+    try {
+      await api.post(`/archiwum/${month}/restore`);
+      toast.success(`Przywrócono ${month}`);
+      qc.invalidateQueries(['archiwum']);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Błąd przywracania');
+    } finally {
+      setBusyMonth(null);
+    }
+  };
+
+  const deleteArchive = async (month) => {
+    if (!confirm(`Trwale usunąć archiwum ${month}? Tej operacji nie można odwrócić — załączniki z tego miesiąca zostaną utracone na zawsze (folder źródłowy został już usunięty przy archiwizacji).`)) return;
+    setBusyMonth(month);
+    try {
+      await api.delete(`/archiwum/${month}`);
+      toast.success(`Usunięto archiwum ${month}`);
+      qc.invalidateQueries(['archiwum']);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Błąd usuwania');
+    } finally {
+      setBusyMonth(null);
+    }
+  };
+
+  const archiveSelected = async () => {
+    const months = [...selected].sort();
+    if (!months.length) return;
+    setBulkBusy(true);
+    const failed = [];
+    for (let i = 0; i < months.length; i++) {
+      const month = months[i];
+      setBulkProgress(`Archiwizacja ${month}... (${i + 1}/${months.length})`);
+      try {
+        await api.post(`/archiwum/${month}/archive`);
+      } catch (err) {
+        failed.push(`${month} (${err.response?.data?.error || 'błąd'})`);
+      }
+    }
+    setBulkBusy(false);
+    setBulkProgress('');
+    setSelected(new Set());
+    qc.invalidateQueries(['archiwum']);
+    if (failed.length) toast.error(`Nie udało się zarchiwizować: ${failed.join(', ')}`);
+    else toast.success(`Zarchiwizowano ${months.length} miesięcy`);
+  };
+
+  return (
+    <div className="card mb-4">
+      <h3 className="font-semibold mb-2">Archiwizacja załączników</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Załączniki zgłoszeń są pogrupowane w foldery miesięczne. Stare miesiące można spakować i przenieść do
+        archiwum, zwalniając miejsce na serwerze. Zarchiwizowane załączniki nie są dostępne online — trzeba je
+        najpierw przywrócić. Zaznacz wiele miesięcy poniżej, aby zarchiwizować je jedną akcją.
+      </p>
+
+      {isLoading ? (
+        <p className="text-sm text-gray-400">Ładowanie...</p>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-500">
+              {selected.size > 0 ? `Wybrano ${selected.size} miesięcy` : ' '}
+            </span>
+            <button
+              type="button"
+              onClick={archiveSelected}
+              disabled={!selected.size || busy || !archivePathSet}
+              title={!archivePathSet ? 'Najpierw ustaw ścieżkę archiwum' : ''}
+              className="btn-primary btn-sm disabled:opacity-50"
+            >
+              {bulkBusy ? (bulkProgress || 'Archiwizacja...') : `Archiwizuj wybrane (${selected.size})`}
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-gray-500">
+                  <th className="pb-2 w-8">
+                    <input
+                      type="checkbox"
+                      checked={selectable.length > 0 && selected.size === selectable.length}
+                      onChange={toggleSelectAll}
+                      disabled={!selectable.length || busy}
+                    />
+                  </th>
+                  <th className="pb-2 font-medium">Miesiąc</th>
+                  <th className="pb-2 font-medium text-right">Rozmiar</th>
+                  <th className="pb-2 font-medium text-right">Plików</th>
+                  <th className="pb-2 font-medium text-center">Status</th>
+                  <th className="pb-2 w-28"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.length === 0 && (
+                  <tr><td colSpan={6} className="py-4 text-center text-gray-400">Brak folderów</td></tr>
+                )}
+                {rows.map(m => (
+                  <tr key={m.month}>
+                    <td className="py-2">
+                      {!m.archived && !m.current && (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(m.month)}
+                          onChange={() => toggleSelected(m.month)}
+                          disabled={busy}
+                        />
+                      )}
+                    </td>
+                    <td className="py-2 font-mono">{m.month}</td>
+                  <td className="py-2 text-right">{m.sizeBytes != null ? formatBytes(m.sizeBytes) : '—'}</td>
+                  <td className="py-2 text-right">{m.fileCount ?? '—'}</td>
+                  <td className="py-2 text-center">
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full ${
+                        m.archived ? 'bg-amber-100 text-amber-700' : m.current ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                      }`}
+                    >
+                      {m.archived ? 'Zarchiwizowany' : m.current ? 'Bieżący' : 'Aktywny'}
+                    </span>
+                  </td>
+                  <td className="py-2 text-right">
+                    {m.archived ? (
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => restoreMonth(m.month)}
+                          disabled={busy}
+                          className="text-blue-600 hover:underline text-xs disabled:opacity-50"
+                        >
+                          {busyMonth === m.month ? 'Przywracanie...' : 'Przywróć'}
+                        </button>
+                        <button
+                          onClick={() => deleteArchive(m.month)}
+                          disabled={busy}
+                          className="text-red-600 hover:underline text-xs disabled:opacity-50"
+                        >
+                          Usuń
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => archiveMonth(m.month)}
+                        disabled={busy || m.current || !archivePathSet}
+                        title={!archivePathSet ? 'Najpierw ustaw ścieżkę archiwum' : m.current ? 'Nie można zarchiwizować bieżącego miesiąca' : ''}
+                        className="text-amber-700 hover:underline text-xs disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                      >
+                        {busyMonth === m.month ? 'Archiwizacja...' : 'Archiwizuj'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Główna strona Ustawień ───────────────────────────────────────────────────
 
 const TABS = [
@@ -1229,8 +1701,10 @@ const TABS = [
   { id: 'imap', label: 'IMAP' },
   { id: 'kategorie', label: 'Kategorie zgłoszeń' },
   { id: 'ldap', label: 'LDAP' },
+  { id: 'external_db', label: 'Bazy zewnętrzne' },
   { id: 'messenger', label: 'Facebook Messenger' },
-  { id: 'n8n', label: 'n8n' },
+  { id: 'n8n', label: 'Webhook' },
+  { id: 'backup', label: 'Pliki i kopie zapasowe' },
   { id: 'inne', label: 'Inne' },
 ];
 
@@ -1394,6 +1868,21 @@ export default function Ustawienia() {
                 <a href="/zgloszenie" target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
                   Otwórz formularz publiczny →
                 </a>
+              </div>
+              <div className="flex items-start gap-2 border-t pt-3 mt-1">
+                <input
+                  type="checkbox"
+                  id="status_otp_enabled"
+                  className="mt-0.5"
+                  checked={effectiveForm.status_otp_enabled !== undefined ? !!effectiveForm.status_otp_enabled : true}
+                  onChange={setCheck('status_otp_enabled')}
+                />
+                <label htmlFor="status_otp_enabled" className="text-sm">
+                  Wymagaj kodu z e-maila do podglądu statusu zgłoszenia
+                  <span className="block text-xs text-slate-400 font-normal">
+                    Przy wejściu na publiczny link statusu (/status/...) system wysyła 6-cyfrowy kod na adres zgłaszającego — trzeba go podać, by zobaczyć zgłoszenie.
+                  </span>
+                </label>
               </div>
             </div>
           </div>
@@ -1566,6 +2055,10 @@ export default function Ustawienia() {
         <LdapPanel form={effectiveForm} set={set} setCheck={setCheck} setVal={setVal} />
       )}
 
+      {activeTab === 'external_db' && (
+        <ZewnetrzneBazyPanel />
+      )}
+
       {activeTab === 'messenger' && (
         <div className="space-y-4 max-w-lg">
           <MessengerPanel form={effectiveForm} set={set} setCheck={setCheck} />
@@ -1575,6 +2068,15 @@ export default function Ustawienia() {
       {activeTab === 'n8n' && (
         <div className="space-y-4 max-w-lg">
           <WebhookN8nPanel form={effectiveForm} set={set} setCheck={setCheck} setVal={setVal} />
+        </div>
+      )}
+
+      {activeTab === 'backup' && (
+        <div className="max-w-2xl">
+          <StorageStatsPanel />
+          <ArchivePathPanel key={effectiveForm.archive_path || ''} archivePath={effectiveForm.archive_path} />
+          <ArchiwizacjaPanel archivePathSet={!!effectiveForm.archive_path} />
+          <BackupPanel />
         </div>
       )}
 

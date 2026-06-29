@@ -145,8 +145,12 @@ router.put('/', requireAdmin, async (req, res) => {
       // Facebook Messenger
       'messenger_enabled', 'messenger_page_id', 'messenger_page_access_token',
       'messenger_app_secret', 'messenger_zespol_id',
-      // Webhook n8n (automatyzacja)
+      // Webhook (automatyzacja)
       'webhook_enabled', 'webhook_url',
+      // Kod OTP na publicznej stronie statusu zgłoszenia
+      'status_otp_enabled',
+      // Archiwizacja starych folderów załączników
+      'archive_path',
     ];
     const updates = [];
     const values = [];
@@ -188,6 +192,26 @@ router.delete('/logo', requireAdmin, async (req, res) => {
     }
     await pool.query('UPDATE ustawienia SET logo_path = NULL WHERE id = 1', []);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/ustawienia/storage-stats — zajętość bazy danych i katalogu uploadów
+router.get('/storage-stats', requireAdmin, async (req, res) => {
+  try {
+    const { getDatabaseSizeBytes, getUploadsSizeBytes, getAppDiskSpace } = require('../utils/storageStats');
+    const [dbSizeBytes, filesSizeBytes, disk] = await Promise.all([
+      getDatabaseSizeBytes(),
+      getUploadsSizeBytes(),
+      getAppDiskSpace().catch(() => null),
+    ]);
+    res.json({
+      dbSizeBytes,
+      filesSizeBytes,
+      diskTotalBytes: disk?.totalBytes ?? null,
+      diskFreeBytes: disk?.freeBytes ?? null,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

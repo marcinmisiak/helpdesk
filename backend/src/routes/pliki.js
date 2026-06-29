@@ -54,7 +54,14 @@ router.get('/:id', async (req, res) => {
     if (!plik) return res.status(404).json({ error: 'Plik nie znaleziony' });
 
     const filePath = path.join(uploadDir, plik.filepath);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Plik nie istnieje na dysku' });
+    if (!fs.existsSync(filePath)) {
+      const { getArchivedMonthsSet } = require('../utils/archiveManager');
+      const archivedMonths = await getArchivedMonthsSet();
+      if (archivedMonths.has(plik.filepath.slice(0, 7))) {
+        return res.status(409).json({ error: 'Załącznik został zarchiwizowany. Poproś administratora o przywrócenie archiwum tego miesiąca w Ustawieniach.', archived: true });
+      }
+      return res.status(404).json({ error: 'Plik nie istnieje na dysku' });
+    }
 
     res.download(filePath);
   } catch (err) {

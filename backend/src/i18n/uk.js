@@ -63,6 +63,10 @@ module.exports = {
   btn_reset_password: 'Скинути пароль',
   reset_password_expire: 'Посилання дійсне протягом {hours} год. Якщо ви не запитували скидання пароля — проігноруйте цей лист.',
 
+  subject_status_otp: 'Код доступу до звернення #{numer} — {appName}',
+  status_otp_intro: 'Ми отримали спробу переглянути статус звернення <strong>#{numer}</strong>. Щоб підтвердити, що це ви, введіть код нижче на сторінці статусу:',
+  status_otp_expire: 'Код дійсний протягом {minutes} хвилин. Якщо ви не намагалися переглянути статус цього звернення, проігноруйте цей лист.',
+
   // Ticket receipt confirmation (public form)
   subject_ticket_received: 'Підтвердження отримання заявки #{numer}',
   ticket_received_intro: 'Підтверджуємо, що ваш запит отримано нашою системою підтримки.',

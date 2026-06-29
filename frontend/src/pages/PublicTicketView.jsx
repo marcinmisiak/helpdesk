@@ -37,29 +37,108 @@ export default function PublicTicketView() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
 
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpMaskedEmail, setOtpMaskedEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
   const [branding, setBranding] = useState({ app_name: 'Helpdesk', logo_path: null });
+
+  const sessionKey = `otp_session_${token}`;
+  const authHeaders = () => {
+    const headers = {};
+    const session = sessionStorage.getItem(sessionKey);
+    if (session) headers['X-Otp-Session'] = session;
+    // Zalogowany pracownik/admin (ten sam token co w panelu, w tym samym localStorage) —
+    // backend wpuści bez kodu OTP, bo i tak ma pełny dostęp przez uwierzytelniony panel.
+    const staffToken = localStorage.getItem('token');
+    if (staffToken) headers['Authorization'] = `Bearer ${staffToken}`;
+    return Object.keys(headers).length ? { headers } : {};
+  };
+  // Sesja OTP wygasła między wczytaniem strony a kolejną akcją (odpowiedz/zamknij/AI) —
+  // wróć do ekranu kodu zamiast pokazywać surowy błąd.
+  const handleOtpExpired = (err) => {
+    if (err.response?.status === 403 && err.response?.data?.requires_code) {
+      sessionStorage.removeItem(sessionKey);
+      setOtpRequired(true);
+      return true;
+    }
+    return false;
+  };
+
+  const loadStatus = () => {
+    setLoading(true);
+    setError('');
+    pub.get(`/public/status/${token}`, authHeaders())
+      .then(r => { setOtpRequired(false); setData(r.data); })
+      .catch(err => {
+        if (!handleOtpExpired(err)) {
+          setError(err.response?.data?.error || 'Nie udało się załadować zgłoszenia.');
+        } else {
+          setOtpMaskedEmail(err.response.data.message_from_masked || '');
+        }
+      })
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     axios.get(`${API_BASE}/api/ustawienia/app-name`).then(r => setBranding(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    setError('');
-    pub.get(`/public/status/${token}`)
-      .then(r => setData(r.data))
-      .catch(err => setError(err.response?.data?.error || 'Nie udało się załadować zgłoszenia.'))
-      .finally(() => setLoading(false));
+    loadStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown(s => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleVerifyOtp = async () => {
+    if (!/^\d{6}$/.test(otpCode.trim())) { setOtpError('Podaj 6-cyfrowy kod.'); return; }
+    setOtpVerifying(true);
+    setOtpError('');
+    try {
+      const { data: res } = await pub.post(`/public/status/${token}/verify-code`, { code: otpCode.trim() });
+      sessionStorage.setItem(sessionKey, res.session);
+      setOtpCode('');
+      loadStatus();
+    } catch (err) {
+      setOtpError(err.response?.data?.error || 'Nieprawidłowy kod.');
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setResending(true);
+    setOtpError('');
+    try {
+      const { data: res } = await pub.post(`/public/status/${token}/resend-code`);
+      setOtpMaskedEmail(res.message_from_masked || otpMaskedEmail);
+      setResendCooldown(30);
+    } catch (err) {
+      setOtpError(err.response?.data?.error || 'Błąd wysyłania kodu.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   const handleClose = async () => {
     setClosing(true);
     try {
-      await pub.post(`/public/status/${token}/zamknij`);
+      await pub.post(`/public/status/${token}/zamknij`, {}, authHeaders());
       setClosed(true);
       setData(prev => prev ? { ...prev, ticket: { ...prev.ticket, status: 3 } } : prev);
     } catch (err) {
-      setSendError(err.response?.data?.error || 'Błąd zamykania. Spróbuj ponownie.');
+      if (!handleOtpExpired(err)) {
+        setSendError(err.response?.data?.error || 'Błąd zamykania. Spróbuj ponownie.');
+      }
     } finally {
       setClosing(false);
       setCloseConfirm(false);
@@ -71,13 +150,17 @@ export default function PublicTicketView() {
     setAiLoading(true);
     setAiError('');
     try {
-      await pub.post(`/public/status/${token}/zapytaj-ai`, { rodo_zgoda: true });
+      await pub.post(`/public/status/${token}/zapytaj-ai`, { rodo_zgoda: true }, authHeaders());
       setShowAiModal(false);
       setRodoZgoda(false);
-      const r = await pub.get(`/public/status/${token}`);
+      const r = await pub.get(`/public/status/${token}`, authHeaders());
       setData(r.data);
     } catch (err) {
-      setAiError(err.response?.data?.error || 'Błąd. Spróbuj ponownie.');
+      if (handleOtpExpired(err)) {
+        setShowAiModal(false);
+      } else {
+        setAiError(err.response?.data?.error || 'Błąd. Spróbuj ponownie.');
+      }
     } finally {
       setAiLoading(false);
     }
@@ -89,14 +172,16 @@ export default function PublicTicketView() {
     setSendError('');
     setSendSuccess(false);
     try {
-      await pub.post(`/public/status/${token}/odpowiedz`, { tresc });
+      await pub.post(`/public/status/${token}/odpowiedz`, { tresc }, authHeaders());
       setSendSuccess(true);
       setTresc('');
       // Odśwież wątek
-      const r = await pub.get(`/public/status/${token}`);
+      const r = await pub.get(`/public/status/${token}`, authHeaders());
       setData(r.data);
     } catch (err) {
-      setSendError(err.response?.data?.error || 'Błąd wysyłania. Spróbuj ponownie.');
+      if (!handleOtpExpired(err)) {
+        setSendError(err.response?.data?.error || 'Błąd wysyłania. Spróbuj ponownie.');
+      }
     } finally {
       setSending(false);
     }
@@ -133,6 +218,44 @@ export default function PublicTicketView() {
             <h2 className="text-lg font-semibold text-gray-800 mb-2">Nie można wyświetlić zgłoszenia</h2>
             <p className="text-red-600 text-sm">{error}</p>
             <p className="text-gray-600 text-xs mt-4">Sprawdź czy link jest poprawny lub skontaktuj się z obsługą.</p>
+          </div>
+        )}
+
+        {otpRequired && !loading && !error && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+            <div className="text-4xl mb-4">🔐</div>
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">Potwierdź dostęp</h2>
+            <p className="text-sm text-gray-600 mb-1">
+              Wysłaliśmy 6-cyfrowy kod na adres {otpMaskedEmail || 'powiązany z tym zgłoszeniem'}.
+            </p>
+            <p className="text-xs text-gray-400 mb-5">Wpisz kod, aby zobaczyć status zgłoszenia.</p>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={otpCode}
+              onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
+              className="w-40 mx-auto block text-center text-2xl font-bold tracking-widest border border-gray-300 rounded-lg px-3 py-2.5 mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="000000"
+            />
+            {otpError && <p className="text-red-600 text-xs mb-3">{otpError}</p>}
+            <button
+              onClick={handleVerifyOtp}
+              disabled={otpVerifying || otpCode.length !== 6}
+              className="inline-flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mb-3"
+            >
+              {otpVerifying ? 'Weryfikacja...' : 'Zweryfikuj kod'}
+            </button>
+            <div>
+              <button
+                onClick={handleResendCode}
+                disabled={resending || resendCooldown > 0}
+                className="text-xs text-blue-600 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
+              >
+                {resendCooldown > 0 ? `Wyślij kod ponownie (${resendCooldown}s)` : resending ? 'Wysyłanie...' : 'Wyślij kod ponownie'}
+              </button>
+            </div>
           </div>
         )}
 

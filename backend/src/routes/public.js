@@ -15,6 +15,34 @@ const { sendWeekendAutoReply } = require('../utils/weekendAutoReply');
 const { maybeSendCsatSurvey } = require('../utils/csat');
 const { sendWebhookEvent } = require('../utils/webhookClient');
 const { createChallenge, verifyChallenge } = require('../utils/mathCaptcha');
+const {
+  generateAndSendCode, verifyCode, issueSession, verifySession,
+  maskEmail, isOtpEnabled, secondsSinceLastCode, isStaffSession,
+  RESEND_COOLDOWN_SECONDS,
+} = require('../utils/statusOtp');
+
+// Dodatkowa autoryzacja kodem e-mail na stronie statusu — autor_token z linku już jest
+// tajny, ale to drugi czynnik (musi też mieć dostęp do swojej skrzynki). Sterowane
+// przełącznikiem ustawienia.status_otp_enabled (domyślnie włączony).
+// autoSend=true (GET) wysyła kod przy pierwszym wejściu — ale nigdy częściej niż raz na
+// RESEND_COOLDOWN_SECONDS, niezależnie od stanu "aktywnego" kodu (10 min), żeby samo
+// odświeżanie strony przez zgłaszającego nigdy nie zalało jego skrzynki kodami.
+// W endpointach POST (odpowiedz/zamknij/zapytaj-ai) tylko odmawia bez wysyłki —
+// strona już powinna mieć ważną sesję z wcześniejszego GET.
+async function gateOtp(req, res, ticket, { autoSend }) {
+  if (!(await isOtpEnabled())) return true;
+  if (verifySession(req, ticket.id, true)) return true;
+  if (await isStaffSession(req)) return true;
+  if (autoSend) {
+    const now = Math.floor(Date.now() / 1000);
+    const hasActiveCode = ticket.status_otp_code && ticket.status_otp_expires > now;
+    if (!hasActiveCode && secondsSinceLastCode(ticket) >= RESEND_COOLDOWN_SECONDS) {
+      await generateAndSendCode(ticket);
+    }
+  }
+  res.status(403).json({ requires_code: true, message_from_masked: maskEmail(ticket.message_from) });
+  return false;
+}
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -328,11 +356,13 @@ router.get('/status/:token', statusLimiter, async (req, res) => {
 
   try {
     const [[ticket]] = await pool.query(
-      `SELECT id, numer, message_subject, message_from, tresc, html, status, data_utworzenia
+      `SELECT id, numer, message_subject, message_from, tresc, html, status, data_utworzenia,
+              status_otp_code, status_otp_expires, status_otp_attempts
        FROM ticket WHERE autor_token = ?`,
       [token]
     );
     if (!ticket) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia lub link jest nieważny.' });
+    if (!(await gateOtp(req, res, ticket, { autoSend: true }))) return;
 
     const [korespondencja] = await pool.query(
       `SELECT k.id, k.data, k.tresc, k.html, k.message_from, k.message_to, k.typ,
@@ -380,6 +410,79 @@ router.get('/status/:token', statusLimiter, async (req, res) => {
   }
 });
 
+const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zbyt wiele prób. Spróbuj ponownie za 15 minut.' },
+});
+
+const otpResendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zbyt wiele próśb o nowy kod. Spróbuj ponownie za 15 minut.' },
+});
+
+// POST /api/public/status/:token/verify-code — weryfikacja kodu OTP wysłanego e-mailem
+router.post('/status/:token/verify-code', otpVerifyLimiter, async (req, res) => {
+  const { token } = req.params;
+  const { code } = req.body;
+  if (!token || token.length < 8) return res.status(400).json({ error: 'Nieprawidłowy token.' });
+  if (!code || !/^\d{6}$/.test(String(code).trim())) return res.status(400).json({ error: 'Podaj 6-cyfrowy kod.' });
+
+  try {
+    const [[ticket]] = await pool.query(
+      'SELECT id, status_otp_code, status_otp_expires, status_otp_attempts FROM ticket WHERE autor_token = ?',
+      [token]
+    );
+    if (!ticket) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia lub link jest nieważny.' });
+
+    const result = await verifyCode(ticket, code);
+    if (!result.ok) {
+      const messages = {
+        no_code: 'Brak aktywnego kodu — poproś o nowy.',
+        expired: 'Kod wygasł — poproś o nowy.',
+        too_many_attempts: 'Zbyt wiele błędnych prób — poproś o nowy kod.',
+        mismatch: `Nieprawidłowy kod.${result.attemptsLeft != null ? ` Pozostało prób: ${result.attemptsLeft}.` : ''}`,
+      };
+      return res.status(400).json({ error: messages[result.reason] || 'Nieprawidłowy kod.' });
+    }
+
+    res.json({ session: issueSession(ticket) });
+  } catch (err) {
+    console.error('[public/status verify-code]', err.message);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+// POST /api/public/status/:token/resend-code — wyślij nowy kod OTP (cooldown 30s)
+router.post('/status/:token/resend-code', otpResendLimiter, async (req, res) => {
+  const { token } = req.params;
+  if (!token || token.length < 8) return res.status(400).json({ error: 'Nieprawidłowy token.' });
+
+  try {
+    const [[ticket]] = await pool.query(
+      'SELECT id, numer, message_from, status_otp_expires FROM ticket WHERE autor_token = ?',
+      [token]
+    );
+    if (!ticket) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia lub link jest nieważny.' });
+
+    const secondsSinceIssued = secondsSinceLastCode(ticket);
+    if (secondsSinceIssued < RESEND_COOLDOWN_SECONDS) {
+      return res.status(429).json({ error: `Poczekaj ${RESEND_COOLDOWN_SECONDS - secondsSinceIssued}s przed ponownym wysłaniem kodu.` });
+    }
+
+    await generateAndSendCode(ticket);
+    res.json({ success: true, message_from_masked: maskEmail(ticket.message_from) });
+  } catch (err) {
+    console.error('[public/status resend-code]', err.message);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 // POST /api/public/status/:token/odpowiedz — odpowiedź autora na ticket
 router.post('/status/:token/odpowiedz', replyLimiter, async (req, res) => {
   const { token } = req.params;
@@ -394,6 +497,7 @@ router.post('/status/:token/odpowiedz', replyLimiter, async (req, res) => {
       [token]
     );
     if (!ticket) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia lub link jest nieważny.' });
+    if (!(await gateOtp(req, res, ticket, { autoSend: false }))) return;
     if (ticket.status === 3) return res.status(400).json({ error: 'Zgłoszenie jest zamknięte — nie można dodać odpowiedzi.' });
 
     const now = Math.floor(Date.now() / 1000);
@@ -465,6 +569,7 @@ router.post('/status/:token/zamknij', replyLimiter, async (req, res) => {
       [token]
     );
     if (!ticket) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia lub link jest nieważny.' });
+    if (!(await gateOtp(req, res, ticket, { autoSend: false }))) return;
     if (ticket.status === 3) return res.json({ success: true, already_closed: true });
 
     const now = Math.floor(Date.now() / 1000);
@@ -569,7 +674,7 @@ router.post('/status/:token/zapytaj-ai', aiLimiter, async (req, res) => {
 
   try {
     const [[ticket]] = await pool.query(
-      `SELECT t.id, t.numer, t.message_subject, t.tresc, t.status,
+      `SELECT t.id, t.numer, t.message_subject, t.tresc, t.status, t.message_from,
               k.nazwa AS kategoria_nazwa
        FROM ticket t
        LEFT JOIN kategoria_zgloszenia k ON k.id = t.kategoria_id
@@ -577,6 +682,7 @@ router.post('/status/:token/zapytaj-ai', aiLimiter, async (req, res) => {
       [token]
     );
     if (!ticket) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia lub link jest nieważny.' });
+    if (!(await gateOtp(req, res, ticket, { autoSend: false }))) return;
     if (ticket.status === 3) return res.status(400).json({ error: 'Zgłoszenie jest zamknięte.' });
 
     const [[existing]] = await pool.query(

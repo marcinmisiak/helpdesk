@@ -16,6 +16,14 @@ const { extractEmail, rememberSenderStatus } = require('../utils/spamBlocklist')
 const { maybeSendCsatSurvey } = require('../utils/csat');
 const { sendTicketReply } = require('../utils/ticketReply');
 const { sendWebhookEvent } = require('../utils/webhookClient');
+const { getArchivedMonthsSet } = require('../utils/archiveManager');
+
+// Załączniki są zapisywane jako "<YYYY-MM>/<nazwa>" (patrz multer storage poniżej) —
+// pierwsze 7 znaków filepath to miesiąc; sprawdzamy go względem plik_archiwum, żeby
+// frontend nie renderował martwego linku do folderu usuniętego przez archiwizację.
+function markArchived(files, archivedMonths) {
+  return files.map((f) => ({ ...f, archived: archivedMonths.has(f.filepath.slice(0, 7)) }));
+}
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 const uploadStorage = multer.diskStorage({
@@ -348,6 +356,40 @@ router.get('/:id', async (req, res) => {
       } catch {}
     }
 
+    // Zewnętrzne bazy danych — odśwież wpisy dla źródeł jeszcze nie sprawdzonych (cache w
+    // ticket.external_db_data, keyowany id źródła — w odróżnieniu od LDAP może być N źródeł).
+    // Odpytywane równolegle, każde z osobnym timeoutem 1.5s, żeby N źródeł nie sumowało narzutu.
+    if (ticket.message_from) {
+      try {
+        const { getActiveSources, lookupEmailInSource } = require('../utils/zewnetrznaBaza');
+        const sources = await getActiveSources();
+        let extDbCache = {};
+        try { extDbCache = ticket.external_db_data ? JSON.parse(ticket.external_db_data) : {}; } catch {}
+
+        const toCheck = sources.filter((s) => !extDbCache[s.id]);
+        if (toCheck.length) {
+          const results = await Promise.all(toCheck.map((s) =>
+            Promise.race([
+              lookupEmailInSource(s, ticket.message_from),
+              new Promise((r) => setTimeout(() => r(undefined), 1500)),
+            ]).then((result) => ({ id: s.id, result }))
+          ));
+
+          let changed = false;
+          const now = Math.floor(Date.now() / 1000);
+          for (const { id, result } of results) {
+            if (result === undefined) continue; // timeout — spróbujemy przy następnym otwarciu
+            extDbCache[id] = { ...result, checked_at: now };
+            changed = true;
+          }
+          if (changed) {
+            await pool.query('UPDATE ticket SET external_db_data = ? WHERE id = ?', [JSON.stringify(extDbCache), ticket.id]);
+            ticket.external_db_data = JSON.stringify(extDbCache);
+          }
+        }
+      } catch {}
+    }
+
     // korespondencja
     const [koresp] = await pool.query(
       `SELECT k.*, u.imie, u.nazwisko, u.avatar_path FROM korespondencja k
@@ -362,21 +404,25 @@ router.get('/:id', async (req, res) => {
       [req.params.id]
     );
 
+    const archivedMonths = await getArchivedMonthsSet();
+
     // pliki ticketu (tabela=1)
-    const [plikiTicket] = await pool.query(
+    const [plikiTicketRaw] = await pool.query(
       'SELECT * FROM plik WHERE tabela = 1 AND ticket_id = ?',
       [req.params.id]
     );
+    const plikiTicket = markArchived(plikiTicketRaw, archivedMonths);
 
     // pliki korespondencji (tabela=2, ticket_id = korespondencja.id) — dołącz do każdego wpisu
     const korIds = koresp.map(k => k.id);
     let korWithPliki = koresp;
     if (korIds.length) {
       const placeholders = korIds.map(() => '?').join(',');
-      const [plikiKor] = await pool.query(
+      const [plikiKorRaw] = await pool.query(
         `SELECT * FROM plik WHERE tabela = 2 AND ticket_id IN (${placeholders})`,
         korIds
       );
+      const plikiKor = markArchived(plikiKorRaw, archivedMonths);
       const byKorId = {};
       for (const p of plikiKor) {
         if (!byKorId[p.ticket_id]) byKorId[p.ticket_id] = [];
@@ -756,6 +802,35 @@ router.post('/:id/ldap-refresh', async (req, res) => {
   }
 });
 
+// POST /api/tickets/:id/external-db-refresh/:sourceId — odśwież dane z jednego zewnętrznego źródła
+router.post('/:id/external-db-refresh/:sourceId', async (req, res) => {
+  try {
+    const [[ticket]] = await pool.query('SELECT id, message_from, external_db_data FROM ticket WHERE id=?', [req.params.id]);
+    if (!ticket) return res.status(404).json({ error: 'Ticket nie znaleziony' });
+
+    const { getActiveSources, lookupEmailInSource } = require('../utils/zewnetrznaBaza');
+    const sources = await getActiveSources();
+    const source = sources.find((s) => String(s.id) === req.params.sourceId);
+    if (!source) return res.status(404).json({ error: 'Źródło nie znalezione lub nieaktywne' });
+
+    const result = await Promise.race([
+      lookupEmailInSource(source, ticket.message_from),
+      new Promise((r) => setTimeout(() => r(undefined), 5000)),
+    ]);
+    if (result === undefined) return res.status(504).json({ error: 'Timeout połączenia z bazą zewnętrzną' });
+
+    let cache = {};
+    try { cache = ticket.external_db_data ? JSON.parse(ticket.external_db_data) : {}; } catch {}
+    const now = Math.floor(Date.now() / 1000);
+    cache[source.id] = { ...result, checked_at: now };
+    await pool.query('UPDATE ticket SET external_db_data = ? WHERE id = ?', [JSON.stringify(cache), ticket.id]);
+
+    res.json({ sourceId: source.id, ...result, checked_at: now });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/tickets/:id/zamknij
 router.post('/:id/zamknij', async (req, res) => {
   try {
@@ -826,6 +901,16 @@ router.post('/:id/status', async (req, res) => {
     } else {
       await pool.query('UPDATE ticket SET status=2, data_zamkniecia=NULL WHERE id=?', [req.params.id]);
     }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/tickets/:id/nowa-wiadomosc — admin ręcznie podświetla ticket jako "Nowa wiadomość" na liście
+router.post('/:id/nowa-wiadomosc', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('UPDATE ticket SET podswietl = 1 WHERE id = ?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

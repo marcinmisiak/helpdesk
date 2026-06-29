@@ -63,6 +63,10 @@ module.exports = {
   btn_reset_password: 'Resetuj hasło',
   reset_password_expire: 'Link jest ważny przez {hours} godzin. Jeśli nie prosiłeś/aś o resetowanie hasła, możesz zignorować tę wiadomość.',
 
+  subject_status_otp: 'Kod dostępu do zgłoszenia #{numer} — {appName}',
+  status_otp_intro: 'Otrzymaliśmy próbę wyświetlenia statusu zgłoszenia <strong>#{numer}</strong>. Aby potwierdzić, że to Ty, wpisz poniższy kod na stronie statusu:',
+  status_otp_expire: 'Kod jest ważny przez {minutes} minut. Jeśli nie próbowałeś/aś wyświetlić statusu zgłoszenia, możesz zignorować tę wiadomość.',
+
   // Potwierdzenie przyjęcia zgłoszenia (publiczny formularz)
   subject_ticket_received: 'Potwierdzenie przyjęcia zgłoszenia nr #{numer}',
   ticket_received_intro: 'Uprzejmie informujemy, że Państwa zgłoszenie zostało przyjęte przez nasz system obsługi zgłoszeń.',

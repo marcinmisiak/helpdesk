@@ -11,6 +11,7 @@ import SLABadge from '../components/SLABadge';
 import AITagBadge from '../components/AITagBadge';
 import PrzydielModal from '../components/PrzydielModal';
 import LdapPanel from '../components/LdapPanel';
+import ExternalDbPanel from '../components/ExternalDbPanel';
 import Avatar from '../components/Avatar';
 
 // Wymusza białe tło i czarny tekst wewnątrz iframe z treścią e-mail.
@@ -623,6 +624,14 @@ export default function TicketView() {
     onError: (err) => toast.error(err.response?.data?.error || t('common.error')),
   });
 
+  // Nie odświeżamy zapytania ['ticket', id] — GET /tickets/:id czyści `podswietl`
+  // przy każdym wejściu na ticket, co natychmiast cofnęłoby to oznaczenie.
+  const markNewMessage = useMutation({
+    mutationFn: () => api.post(`/tickets/${id}/nowa-wiadomosc`),
+    onSuccess: () => { toast.success(t('ticket_view.toast_marked_new_message')); qc.invalidateQueries(['tickets']); },
+    onError: (err) => toast.error(err.response?.data?.error || t('common.error')),
+  });
+
   const zamknij = useMutation({
     mutationFn: (sendNotification) => api.post(`/tickets/${id}/zamknij`, { send_notification: sendNotification }),
     onSuccess: () => { toast.success(t('ticket_view.toast_closed')); setShowCloseConfirm(false); qc.invalidateQueries(['ticket', id]); qc.invalidateQueries(['tickets']); },
@@ -828,6 +837,16 @@ export default function TicketView() {
               {ticket.odlozony && (
                 <span className="badge-yellow">{t('ticket_view.deferred_until', { date: formatDate(ticket.odlozony_data) })}</span>
               )}
+              {isAdmin && (
+                <button
+                  onClick={() => markNewMessage.mutate()}
+                  disabled={markNewMessage.isPending}
+                  className="text-xs text-orange-600 dark:text-orange-300 hover:underline ml-1 whitespace-nowrap"
+                  title={t('ticket_view.mark_new_message_hint')}
+                >
+                  {markNewMessage.isPending ? '...' : `✉ ${t('ticket_view.mark_new_message')}`}
+                </button>
+              )}
             </div>
           </div>
           <span className="text-sm text-gray-400 dark:text-gray-500">#{ticket.numer}</span>
@@ -923,6 +942,8 @@ export default function TicketView() {
 
         <LdapPanel ticket={ticket} onRefresh={() => qc.invalidateQueries(['ticket', id])} ldapCardConfig={ldapCardConfig} />
 
+        <ExternalDbPanel ticket={ticket} onRefresh={() => qc.invalidateQueries(['ticket', id])} />
+
         {isAdmin && detectSensitiveData(ticket.tresc) && (
           <SensitiveDataWarning ticketId={ticket.id} onRedacted={() => qc.invalidateQueries(['ticket', id])} />
         )}
@@ -945,7 +966,15 @@ export default function TicketView() {
           <div className="mt-3">
             <p className="label">{t('ticket_view.attachments')}</p>
             <div className="flex flex-wrap gap-2">
-              {pliki.map(p => (
+              {pliki.map(p => p.archived ? (
+                <span
+                  key={p.id}
+                  title="Załącznik zarchiwizowany — poproś administratora o przywrócenie archiwum tego miesiąca w Ustawieniach."
+                  className="btn-secondary btn-sm opacity-60 cursor-not-allowed"
+                >
+                  📦 {p.originalname || p.filepath.split('/').pop()} (zarchiwizowane)
+                </span>
+              ) : (
                 <a
                   key={p.id}
                   href={`${import.meta.env.VITE_API_URL?.replace('/api', '')}/pliki/${p.filepath}`}
@@ -1190,7 +1219,15 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
             <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('ticket_view.korr_attachments', { count: k.pliki.length })}</p>
               <div className="flex flex-wrap gap-2">
-                {k.pliki.map(p => (
+                {k.pliki.map(p => p.archived ? (
+                  <span
+                    key={p.id}
+                    title="Załącznik zarchiwizowany — poproś administratora o przywrócenie archiwum tego miesiąca w Ustawieniach."
+                    className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-2 py-1 cursor-not-allowed"
+                  >
+                    📦 {p.originalname || p.filepath.split('/').pop()} (zarchiwizowane)
+                  </span>
+                ) : (
                   <a
                     key={p.id}
                     href={`${import.meta.env.VITE_API_URL?.replace('/api', '')}/pliki/${p.filepath}`}

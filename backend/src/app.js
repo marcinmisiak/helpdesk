@@ -45,9 +45,12 @@ app.use('/api/kategorie', require('./routes/kategorie'));
 app.use('/api/szablony', require('./routes/szablony'));
 app.use('/api/zespoly', require('./routes/zespoly'));
 app.use('/api/kanaly-czatu', require('./routes/kanaly_czatu'));
+app.use('/api/zewnetrzne-bazy', require('./routes/zewnetrzne_bazy'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/messenger', require('./routes/messenger'));
 app.use('/api/webhook/n8n', require('./routes/webhookN8n'));
+app.use('/api/backup', require('./routes/backup'));
+app.use('/api/archiwum', require('./routes/archiwum'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

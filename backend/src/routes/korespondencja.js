@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { authenticate, requireWorker } = require('../middleware/auth');
+const { getArchivedMonthsSet } = require('../utils/archiveManager');
 
 router.use(authenticate, requireWorker);
 
@@ -20,8 +21,10 @@ router.get('/:id', async (req, res) => {
       'SELECT * FROM plik WHERE tabela = 2 AND ticket_id = ?',
       [req.params.id]
     );
+    const archivedMonths = await getArchivedMonthsSet();
+    const plikiZFlaga = pliki.map((f) => ({ ...f, archived: archivedMonths.has(f.filepath.slice(0, 7)) }));
 
-    res.json({ korespondencja: koresp, pliki });
+    res.json({ korespondencja: koresp, pliki: plikiZFlaga });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
