@@ -24,6 +24,29 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
 
   const isEdit = !!channel;
 
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  const testImap = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data } = await api.post('/kanaly-czatu/imap-test', {
+        id: channel?.id,
+        imap_server: form.imap_server,
+        imap_port: form.imap_port,
+        imap_login: form.imap_login,
+        imap_password: form.imap_password,
+        imap_path: form.imap_path,
+      });
+      setTestResult({ ok: true, msg: data.message });
+    } catch (err) {
+      setTestResult({ ok: false, msg: err.response?.data?.error || t('chat_channels.error_test') });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const save = async () => {
     if (!form.nazwa.trim()) return toast.error(t('chat_channels.error_no_name'));
     if (!form.zespol_id) return toast.error(t('chat_channels.error_no_team'));
@@ -142,6 +165,21 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
                   <div>
                     <label className="label">{t('chat_channels.field_imap_path')}</label>
                     <input value={form.imap_path} onChange={set('imap_path')} className="input" placeholder="INBOX" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={testImap}
+                      disabled={testing || !form.imap_server || !form.imap_login}
+                      className="btn-secondary btn-sm"
+                    >
+                      {testing ? t('chat_channels.testing') : t('chat_channels.test_connection')}
+                    </button>
+                    {testResult && (
+                      <span className={`text-sm ${testResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+                        {testResult.ok ? '✓' : '✕'} {testResult.msg}
+                      </span>
+                    )}
                   </div>
                 </>
               )}

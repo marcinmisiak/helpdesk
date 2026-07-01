@@ -3,6 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const pool = require('../config/db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { testImapConnection } = require('../utils/imapTest');
 
 router.use(authenticate);
 
@@ -95,6 +96,36 @@ router.put('/:id', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/kanaly-czatu/imap-test — testuje połączenie IMAP danymi z formularza (przed zapisem).
+// Jeśli imap_password jest puste, a podano id istniejącego kanału, używa hasła już
+// zapisanego w bazie — front nigdy nie ma dostępu do prawdziwego hasła (GET je usuwa),
+// więc przy edycji bez zmiany hasła pole w formularzu jest puste.
+router.post('/imap-test', requireAdmin, async (req, res) => {
+  const { id, imap_server, imap_port, imap_login, imap_password, imap_path } = req.body;
+
+  if (!imap_server?.trim()) return res.status(400).json({ error: 'Podaj adres serwera IMAP' });
+  if (!imap_login?.trim()) return res.status(400).json({ error: 'Podaj login IMAP' });
+
+  try {
+    let password = imap_password || null;
+    if (!password && id) {
+      const [[row]] = await pool.query('SELECT imap_password FROM kanal_czatu WHERE id = ?', [id]);
+      password = row?.imap_password || null;
+    }
+
+    await testImapConnection({
+      host: imap_server.trim(),
+      port: imap_port || null,
+      user: imap_login.trim(),
+      password,
+      path: imap_path?.trim() || null,
+    });
+    res.json({ success: true, message: 'Połączenie z serwerem IMAP nawiązane pomyślnie.' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: `Błąd IMAP: ${err.message}` });
   }
 });
 

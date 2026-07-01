@@ -1,4 +1,4 @@
-require('dotenv').config({ override: true });
+require('dotenv').config({ override: true, quiet: true });
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
