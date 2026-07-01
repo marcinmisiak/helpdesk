@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const pool = require('../config/db');
 const { authenticate, requireWorker } = require('../middleware/auth');
 const { getArchivedMonthsSet } = require('../utils/archiveManager');
+
+const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
 router.use(authenticate, requireWorker);
 
@@ -40,10 +44,33 @@ router.patch('/:id/przeczytane', async (req, res) => {
   }
 });
 
-// DELETE /api/korespondencja/:id
+// DELETE /api/korespondencja/:id — tylko admin
 router.delete('/:id', async (req, res) => {
+  if (req.user.rola !== 'admin') return res.status(403).json({ error: 'Brak uprawnień' });
   try {
+    const [[k]] = await pool.query('SELECT id, ticket_id, message_from, typ FROM korespondencja WHERE id = ?', [req.params.id]);
+    if (!k) return res.status(404).json({ error: 'Nie znaleziono' });
+
+    const [files] = await pool.query('SELECT filepath FROM plik WHERE tabela = 2 AND ticket_id = ?', [req.params.id]);
+    for (const f of files) {
+      try { fs.unlinkSync(path.join(uploadDir, f.filepath)); } catch {}
+    }
+    await pool.query('DELETE FROM plik WHERE tabela = 2 AND ticket_id = ?', [req.params.id]);
     await pool.query('DELETE FROM korespondencja WHERE id = ?', [req.params.id]);
+
+    const now = Math.floor(Date.now() / 1000);
+    try {
+      await pool.query(
+        `INSERT INTO notatka (ticket_id, tresc, data, created_by, updated_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          k.ticket_id,
+          `[Usunięto] Wiadomość korespondencji #${k.id}${k.message_from ? ` od ${k.message_from}` : ''} została trwale usunięta przez ${req.user.imie} ${req.user.nazwisko}.`,
+          now, req.user.id, req.user.id, now, now,
+        ]
+      );
+    } catch { /* tabela notatka może mieć inną strukturę */ }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1056,6 +1056,7 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
   const [expanded, setExpanded] = useState(false);
   const [przeczytane, setPrzeczytane] = useState(!!k.przeczytane);
   const [redacting, setRedacting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const TYP_CONFIG = {
     forward: {
@@ -1150,6 +1151,20 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
     }
   };
 
+  const handleDelete = async (e) => {
+    e.stopPropagation();
+    if (!confirm(t('ticket_view.confirm_korr_delete'))) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/korespondencja/${k.id}`);
+      toast.success(t('ticket_view.toast_korr_deleted'));
+      onRefresh?.();
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('common.error'));
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className={`border ${cfg.border} rounded overflow-hidden`}>
       <div
@@ -1180,6 +1195,16 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
           <span className="text-xs text-gray-400 dark:text-gray-500">
             {k.data ? format(new Date(k.data * 1000), 'dd.MM.yyyy HH:mm', { locale }) : ''}
           </span>
+          {isAdmin && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              title={t('ticket_view.korr_delete')}
+              className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
+            >
+              🗑️
+            </button>
+          )}
           <span className="text-gray-400 dark:text-gray-500">{expanded ? '▲' : '▼'}</span>
         </div>
       </div>

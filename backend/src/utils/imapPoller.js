@@ -5,7 +5,6 @@ const fs = require('fs');
 const path = require('path');
 const msGraph = require('./msGraphClient');
 const { getSiteUrl } = require('./siteUrl');
-const { sendWebhookEvent } = require('./webhookClient');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -382,15 +381,11 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
 
     console.log(`[IMAP] Dodano odpowiedź do ticketu #${ticketId}${isForwardReply ? ' (forward_reply)' : ''}`);
 
-    const [[ticketRow]] = await pool.query('SELECT numer, message_subject, status, zrodlo, kanal_id FROM ticket WHERE id = ?', [ticketId]);
-    // Tickety z kanału e-mail (przypisane do zespołu) są obsługiwane wyłącznie ręcznie przez
-    // pracowników — webhook n8n (i jego automatyczne odpowiedzi) celowo ich nie dotyczy.
-    if (!ticketRow?.kanal_id) {
-      sendWebhookEvent('ticket.message.received', {
-        ticket: { id: ticketId, numer: ticketRow?.numer, subject: ticketRow?.message_subject, from, status: ticketRow?.status, zrodlo: ticketRow?.zrodlo },
-        message: { tresc: saveText, html: saveHtml || null, from },
-      }).catch(() => {});
-    }
+    // Tickety/odpowiedzi z e-maila są obsługiwane wyłącznie ręcznie przez pracowników —
+    // webhook n8n (i jego automatyczne odpowiedzi) celowo nigdy ich nie dotyczy, niezależnie
+    // od tego, czy ticket pochodzi z głównej skrzynki czy z kanału e-mail (oba mają zrodlo='email').
+    // Patrz CLAUDE.md "Spam gating"/"Webhook integration" — automatyczne odpowiedzi AI na maile
+    // potrafią trafić nie na temat (np. ticket #4655), więc webhook dla e-maili jest wyłączony.
   } else {
     const numer = Math.random().toString().slice(2, 8);
     const [result] = await pool.query(
@@ -464,14 +459,8 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
       }
     }).catch(() => {});
 
-    // Tickety z kanału e-mail (przypisane do zespołu) są obsługiwane wyłącznie ręcznie przez
-    // pracowników — webhook n8n (i jego automatyczne odpowiedzi) celowo ich nie dotyczy.
-    if (!channel?.id) {
-      sendWebhookEvent('ticket.created', {
-        ticket: { id: result.insertId, numer, subject, from, priority: null, status: 1, zrodlo: 'email' },
-        message: { tresc: saveText, html: saveHtml || null, from },
-      }).catch(() => {});
-    }
+    // Tickety z e-maila (głównej skrzynki lub kanału) są obsługiwane wyłącznie ręcznie przez
+    // pracowników — webhook n8n (i jego automatyczne odpowiedzi) celowo nigdy ich nie dotyczy.
 
     console.log(`[IMAP] Nowy ticket #${result.insertId} (${numer}) od ${from}`);
   }

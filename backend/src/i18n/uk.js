@@ -15,6 +15,7 @@ module.exports = {
   subject_assigned: '[{appName}] Вам призначено заявку #{numer}',
   subject_unassigned_from: '[{appName}] Вас видалено із заявки #{numer}',
   subject_closed_by_requester: '[{appName}] Заявку #{numer} закрито заявником',
+  subject_internal_note: '[{appName}] Нова внутрішня нотатка до заявки #{numer}',
   subject_reset_password: 'Скидання пароля — {appName}',
 
   // Email body
@@ -78,6 +79,9 @@ module.exports = {
 
   // Requester reply — worker notification
   public_reply_intro: 'Заявник додав повідомлення до заявки <strong>#{numer}</strong>.',
+
+  // New internal note — notification for assigned workers
+  internal_note_intro: '<strong>{author}</strong> додав(ла) внутрішню нотатку до заявки <strong>#{numer}</strong>.',
 
   // Ticket table in emails
   col_waiting: 'Очікує',

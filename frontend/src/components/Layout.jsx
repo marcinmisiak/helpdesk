@@ -217,7 +217,10 @@ export default function Layout({ children }) {
       { count: counts?.zespolowe, color: 'red' },
       { count: mojeIndywidualne, color: 'yellow' },
     ]},
-    { to: '/czaty', label: t('nav.chats'), icon: '💬', badge: counts?.czaty },
+    { to: '/czaty', label: t('nav.chats'), icon: '💬', badges: [
+      { count: counts?.czatyNowe, color: 'red' },
+      { count: counts?.czatyWtoku, color: 'yellow' },
+    ]},
     { to: '/odlozone', label: t('nav.deferred'), icon: '⏸️', badge: counts?.odlozone },
     { to: '/kalendarz', label: t('nav.calendar'), icon: '📅' },
     { to: '/zespoly', label: t('nav.teams'), icon: '👨‍👩‍👧' },

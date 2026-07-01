@@ -15,6 +15,7 @@ module.exports = {
   subject_assigned: '[{appName}] You have been assigned to ticket #{numer}',
   subject_unassigned_from: '[{appName}] You have been removed from ticket #{numer}',
   subject_closed_by_requester: '[{appName}] Ticket #{numer} closed by requester',
+  subject_internal_note: '[{appName}] New internal note on ticket #{numer}',
   subject_reset_password: 'Password reset — {appName}',
 
   // Email body
@@ -78,6 +79,9 @@ module.exports = {
 
   // Requester reply — worker notification
   public_reply_intro: 'The requester added a message to ticket <strong>#{numer}</strong>.',
+
+  // New internal note — notification for assigned workers
+  internal_note_intro: '<strong>{author}</strong> added an internal note to ticket <strong>#{numer}</strong>.',
 
   // Ticket table in emails
   col_waiting: 'Waiting',

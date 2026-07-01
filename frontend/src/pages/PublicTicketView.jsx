@@ -194,13 +194,17 @@ export default function PublicTicketView() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+    {/* Baner z logo — pełna szerokość, od samej góry strony (mobile i desktop) */}
+    {logoUrl && (
+      <div className="w-full">
+        <img src={logoUrl} alt={branding.app_name} className="block w-full max-h-72 object-contain mx-auto" />
+      </div>
+    )}
     <div className="flex-1 py-8 px-4">
       <div className="max-w-2xl mx-auto">
         {/* Nagłówek */}
         <div className="text-center mb-6">
-          {logoUrl
-            ? <img src={logoUrl} alt={branding.app_name} className="h-12 w-auto object-contain mx-auto mb-3" />
-            : <div className="text-4xl mb-3">🎫</div>}
+          {!logoUrl && <div className="text-4xl mb-3">🎫</div>}
           <h1 className="text-xl font-bold text-gray-900">{branding.app_name}</h1>
           <p className="text-sm text-gray-600 mt-0.5">Podgląd zgłoszenia</p>
         </div>

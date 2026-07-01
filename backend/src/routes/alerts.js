@@ -84,9 +84,15 @@ router.get('/count', async (req, res) => {
          AND EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?)`,
       [req.user.id]
     );
-    const [[czaty]] = await pool.query(
+    const [[czatyNowe]] = await pool.query(
       `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
-       WHERE t.zrodlo IN ('live_chat', 'messenger') AND t.status != 3
+       WHERE t.zrodlo IN ('live_chat', 'messenger') AND t.status = 1
+         AND ${MINE_OR_TEAM_POOL}`,
+      [req.user.id, req.user.id]
+    );
+    const [[czatyWtoku]] = await pool.query(
+      `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
+       WHERE t.zrodlo IN ('live_chat', 'messenger') AND t.status = 2
          AND ${MINE_OR_TEAM_POOL}`,
       [req.user.id, req.user.id]
     );
@@ -151,7 +157,7 @@ router.get('/count', async (req, res) => {
     } catch {}
 
     res.json({
-      nowe: nowe.cnt, wtoku: wtoku.cnt, moje: moje.cnt, zespolowe: zespolowe.cnt, czaty: czaty.cnt, odlozone: odloz.cnt, mojeOdlozone: mojeOdloz.cnt,
+      nowe: nowe.cnt, wtoku: wtoku.cnt, moje: moje.cnt, zespolowe: zespolowe.cnt, czaty: czatyNowe.cnt + czatyWtoku.cnt, czatyNowe: czatyNowe.cnt, czatyWtoku: czatyWtoku.cnt, odlozone: odloz.cnt, mojeOdlozone: mojeOdloz.cnt,
       alerts: alertCount, spam: spamCount,
       last_ticket_at: newest.ts || 0,
       last_reply_at: lastReplyAt,

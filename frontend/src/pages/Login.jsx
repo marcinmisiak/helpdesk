@@ -107,9 +107,9 @@ export default function Login() {
       <div className="hidden lg:flex flex-col justify-between w-1/2 bg-blue-800 p-12 text-white">
         <div>
           {logoUrl ? (
-            <img src={logoUrl} alt={branding.app_name} className="h-14 w-auto object-contain mb-8" />
+            <img src={logoUrl} alt={branding.app_name} className="block w-full max-h-56 object-contain object-left mb-8" />
           ) : (
-            <div className="text-5xl mb-8">🎫</div>
+            <div className="text-6xl mb-8">🎫</div>
           )}
           <h1 className="text-3xl font-bold mb-3">{branding.app_name}</h1>
           <p className="text-blue-200 text-base leading-relaxed max-w-sm">
@@ -137,141 +137,148 @@ export default function Login() {
       </div>
 
       {/* ── Prawa strona — formularz logowania ─────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12">
+      <div className="flex-1 flex flex-col">
 
-        {/* Logo mobile */}
-        <div className="lg:hidden text-center mb-8">
+        {/* Baner mobile — pełna szerokość, od samej góry strony */}
+        <div className="lg:hidden w-full">
           {logoUrl ? (
-            <img src={logoUrl} alt={branding.app_name} className="h-12 w-auto object-contain mx-auto mb-3" />
+            <img src={logoUrl} alt={branding.app_name} className="block w-full max-h-72 object-contain mx-auto" />
           ) : (
-            <div className="text-4xl mb-3">🎫</div>
+            <div className="w-full py-10 text-center text-5xl bg-blue-800 text-white">🎫</div>
           )}
-          <h1 className="text-xl font-bold text-slate-900">{branding.app_name}</h1>
         </div>
 
-        <div className="w-full max-w-sm">
-          {/* Przełącznik języka */}
-          <div className="flex justify-end mb-4 gap-2">
-            <button
-              onClick={() => setLanguage('pl')}
-              className={`text-xs px-2 py-1 rounded ${i18n.language === 'pl' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              PL
-            </button>
-            <button
-              onClick={() => setLanguage('en')}
-              className={`text-xs px-2 py-1 rounded ${i18n.language === 'en' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              EN
-            </button>
+        <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12">
+
+          {/* Nazwa systemu mobile (pod banerem) */}
+          <div className="lg:hidden text-center mb-8">
+            <h1 className="text-xl font-bold text-slate-900">{branding.app_name}</h1>
           </div>
 
-          <div className="mb-8 lg:mt-0">
-            <h2 className="text-2xl font-bold text-slate-900">{t('login.title')}</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              {hasOAuth ? t('login.subtitle_oauth') : t('login.subtitle_plain')}
-            </p>
-          </div>
-
-          {(error || oauthErrorMsg) && (
-            <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {error || oauthErrorMsg}
-            </div>
-          )}
-
-          {/* ── Zapamiętaj mnie ── */}
-          <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={e => setRemember(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm text-slate-600">{t('login.remember_me')}</span>
-          </label>
-
-          {/* ── Przyciski OAuth ── */}
-          {providers && (
-            <div className="space-y-2.5">
-              {providers.microsoft && (
-                <OAuthButton provider="microsoft" label={t('login.microsoft')} icon={MicrosoftIcon} primary remember={remember} />
-              )}
-              {providers.google && (
-                <OAuthButton provider="google" label={t('login.google')} icon={GoogleIcon} remember={remember} />
-              )}
-            </div>
-          )}
-
-          {/* ── Inne metody ── */}
-          {hasOAuth && (
-            <div className="mt-4">
+          <div className="w-full max-w-sm">
+            {/* Przełącznik języka */}
+            <div className="flex justify-end mb-4 gap-2">
               <button
-                type="button"
-                onClick={() => setShowEmailForm(v => !v)}
-                className="w-full text-sm text-slate-500 hover:text-slate-700 py-2 flex items-center justify-center gap-1 transition-colors"
+                onClick={() => setLanguage('pl')}
+                className={`text-xs px-2 py-1 rounded ${i18n.language === 'pl' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}
               >
-                <svg className={`w-3.5 h-3.5 transition-transform ${showEmailForm ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-                {showEmailForm ? t('login.hide_methods') : t('login.other_methods')}
+                PL
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`text-xs px-2 py-1 rounded ${i18n.language === 'en' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                EN
               </button>
             </div>
-          )}
 
-          {emailFormVisible && (
-            <form onSubmit={handleSubmit} className={`space-y-4 ${hasOAuth ? 'mt-2 pt-4 border-t border-slate-200' : ''}`}>
-              <div>
-                <label className="label">{t('login.email')}</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="input"
-                  placeholder={t('login.email_placeholder')}
-                  required
-                  autoFocus={!hasOAuth}
-                />
+            <div className="mb-8 lg:mt-0">
+              <h2 className="text-2xl font-bold text-slate-900">{t('login.title')}</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                {hasOAuth ? t('login.subtitle_oauth') : t('login.subtitle_plain')}
+              </p>
+            </div>
+
+            {(error || oauthErrorMsg) && (
+              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {error || oauthErrorMsg}
               </div>
+            )}
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="label mb-0">{t('login.password')}</label>
-                  <Link to="/forgot-password" className="text-xs text-blue-600 hover:text-blue-800 hover:underline">
-                    {t('login.forgot_password')}
-                  </Link>
+            {/* ── Zapamiętaj mnie ── */}
+            <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={e => setRemember(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-slate-600">{t('login.remember_me')}</span>
+            </label>
+
+            {/* ── Przyciski OAuth ── */}
+            {providers && (
+              <div className="space-y-2.5">
+                {providers.microsoft && (
+                  <OAuthButton provider="microsoft" label={t('login.microsoft')} icon={MicrosoftIcon} primary remember={remember} />
+                )}
+                {providers.google && (
+                  <OAuthButton provider="google" label={t('login.google')} icon={GoogleIcon} remember={remember} />
+                )}
+              </div>
+            )}
+
+            {/* ── Inne metody ── */}
+            {hasOAuth && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEmailForm(v => !v)}
+                  className="w-full text-sm text-slate-500 hover:text-slate-700 py-2 flex items-center justify-center gap-1 transition-colors"
+                >
+                  <svg className={`w-3.5 h-3.5 transition-transform ${showEmailForm ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                  {showEmailForm ? t('login.hide_methods') : t('login.other_methods')}
+                </button>
+              </div>
+            )}
+
+            {emailFormVisible && (
+              <form onSubmit={handleSubmit} className={`space-y-4 ${hasOAuth ? 'mt-2 pt-4 border-t border-slate-200' : ''}`}>
+                <div>
+                  <label className="label">{t('login.email')}</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="input"
+                    placeholder={t('login.email_placeholder')}
+                    required
+                    autoFocus={!hasOAuth}
+                  />
                 </div>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="input"
-                  placeholder="••••••••"
-                  required
-                />
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="label mb-0">{t('login.password')}</label>
+                    <Link to="/forgot-password" className="text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                      {t('login.forgot_password')}
+                    </Link>
+                  </div>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="input"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+
+                <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-2.5 mt-2">
+                  {loading ? t('login.submitting') : t('login.submit')}
+                </button>
+              </form>
+            )}
+
+            <p className="mt-6 text-center text-xs text-slate-400">v{__APP_VERSION__}</p>
+
+            {/* Kontakt mobile */}
+            {hasContacts && (
+              <div className="mt-8 pt-6 border-t border-slate-200 lg:hidden">
+                <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-2">{t('login.contact')}</p>
+                <div className="space-y-1">
+                  {phones.map((p, i) => (
+                    <a key={i} href={`tel:${p.replace(/\s/g, '')}`} className="block text-sm text-slate-600 hover:text-blue-600">📞 {p}</a>
+                  ))}
+                  {emails.map((e, i) => (
+                    <a key={i} href={`mailto:${e}`} className="block text-sm text-slate-600 hover:text-blue-600">✉️ {e}</a>
+                  ))}
+                </div>
               </div>
-
-              <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-2.5 mt-2">
-                {loading ? t('login.submitting') : t('login.submit')}
-              </button>
-            </form>
-          )}
-
-          <p className="mt-6 text-center text-xs text-slate-400">v{__APP_VERSION__}</p>
-
-          {/* Kontakt mobile */}
-          {hasContacts && (
-            <div className="mt-8 pt-6 border-t border-slate-200 lg:hidden">
-              <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-2">{t('login.contact')}</p>
-              <div className="space-y-1">
-                {phones.map((p, i) => (
-                  <a key={i} href={`tel:${p.replace(/\s/g, '')}`} className="block text-sm text-slate-600 hover:text-blue-600">📞 {p}</a>
-                ))}
-                {emails.map((e, i) => (
-                  <a key={i} href={`mailto:${e}`} className="block text-sm text-slate-600 hover:text-blue-600">✉️ {e}</a>
-                ))}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -15,6 +15,7 @@ module.exports = {
   subject_assigned: '[{appName}] Przypisano Cię do zgłoszenia #{numer}',
   subject_unassigned_from: '[{appName}] Usunięto Cię z przypisanych do zgłoszenia #{numer}',
   subject_closed_by_requester: '[{appName}] Zgłoszenie #{numer} zamknięte przez zgłaszającego',
+  subject_internal_note: '[{appName}] Nowa notatka wewnętrzna w zgłoszeniu #{numer}',
   subject_reset_password: 'Resetowanie hasła — {appName}',
 
   // Treści maili
@@ -78,6 +79,9 @@ module.exports = {
 
   // Odpowiedź zgłaszającego — powiadomienie dla pracownika
   public_reply_intro: 'Zgłaszający dodał wiadomość do zgłoszenia <strong>#{numer}</strong>.',
+
+  // Nowa notatka wewnętrzna — powiadomienie dla przypisanych pracowników
+  internal_note_intro: '<strong>{author}</strong> dodał/a notatkę wewnętrzną do zgłoszenia <strong>#{numer}</strong>.',
 
   // Tabela ticketów w mailach
   col_waiting: 'Czeka',
