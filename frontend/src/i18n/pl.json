@@ -576,6 +576,8 @@
     "csat_enabled_label": "Wysyłaj ankietę satysfakcji (CSAT) po zamknięciu zgłoszenia",
     "ticket_log_enabled_label": "Zapisuj dziennik zdarzeń zgłoszenia",
     "ticket_log_enabled_hint": "Rejestruje kto i kiedy przydzielił, otworzył, odpowiedział, zamknął, przekazał itd. zgłoszenie. Widoczny w widoku zgłoszenia.",
+    "user_activity_notify_label": "Powiadamiaj o aktywności użytkowników",
+    "user_activity_notify_hint": "Pokazuje powiadomienie, gdy inny użytkownik loguje się lub opuszcza system.",
     "save": "Zapisz ustawienia",
     "saved": "Ustawienia zapisane"
   },

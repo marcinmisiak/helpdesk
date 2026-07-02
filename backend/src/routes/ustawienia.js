@@ -38,7 +38,7 @@ const logoUpload = multer({
 router.get('/app-name', async (req, res) => {
   try {
     const [[row]] = await pool.query(
-      'SELECT app_name, logo_path, kontakt_telefony, kontakt_emaile, app_language FROM ustawienia WHERE id = 1'
+      'SELECT app_name, logo_path, kontakt_telefony, kontakt_emaile, app_language, powiadom_aktywnosc FROM ustawienia WHERE id = 1'
     );
     res.json({
       app_name: row?.app_name || 'Helpdesk',
@@ -46,9 +46,10 @@ router.get('/app-name', async (req, res) => {
       kontakt_telefony: row?.kontakt_telefony || '',
       kontakt_emaile: row?.kontakt_emaile || '',
       app_language: row?.app_language || 'pl',
+      powiadom_aktywnosc: row?.powiadom_aktywnosc ?? 1,
     });
   } catch {
-    res.json({ app_name: 'Helpdesk', logo_path: null, kontakt_telefony: '', kontakt_emaile: '', app_language: 'pl' });
+    res.json({ app_name: 'Helpdesk', logo_path: null, kontakt_telefony: '', kontakt_emaile: '', app_language: 'pl', powiadom_aktywnosc: 1 });
   }
 });
 
@@ -117,6 +118,7 @@ router.put('/', requireAdmin, async (req, res) => {
       'powiadom_nadawce',
       'powiadom_rejestracja',
       'system_email_list',
+      'powiadom_aktywnosc',
       // LDAP
       'ldap_enabled', 'ldap_host', 'ldap_port', 'ldap_base_dn',
       'ldap_bind_dn', 'ldap_bind_password', 'ldap_user_filter',

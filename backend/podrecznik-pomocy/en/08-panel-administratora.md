@@ -58,6 +58,14 @@ After saving the settings, use the **Send test email** button to verify the conf
 | **Notify sender about new ticket** | Sends an email to admins when a new ticket arrives (when no one is logged in) |
 | **Notify submitter on ticket registration** | Sends a confirmation email to the submitter immediately after their ticket is registered — including the ticket number. Applies to tickets from email and tickets created manually by an admin. The public form always sends a confirmation regardless of this setting. |
 
+### System emails (no automatic correspondence at all)
+
+A text field (one address per line) where you can list mailboxes that should **never receive any automatic message** from the system — no registration confirmation, no worker reply, no CSAT survey, no close reminder.
+
+Intended for automated, unmonitored mailboxes that end up as the "submitter" on a ticket — e.g. an SMS gateway, a server monitoring system, or notifications forwarded from another application. Such mailboxes usually don't accept mail at all, so any attempt to reply to them bounces back (NDR) — and without this setting, further independent notifications from the same sender with a similar subject can get incorrectly matched to one old ticket instead of creating separate tickets.
+
+> **How it works exactly:** for an address on this list, every new incoming message always starts a new ticket (the system does not try to match it to earlier tickets by sender+subject similarity) — unless it's a genuine reply in a thread (recognized via the message header) or the subject contains the number of an existing ticket.
+
 ---
 
 ## Incoming Mail (IMAP)
@@ -425,6 +433,18 @@ Allows you to enable or disable the ticket submission form available without log
 The form shows **PL / EN / UA** buttons — visitors can change the language. On the first visit, the system tries to automatically match the browser language. The choice is saved in the visitor's browser.
 
 The public form always sends a confirmation email with the ticket number after submission (regardless of the "Notify submitter on ticket registration" option).
+
+---
+
+## Ticket Event Log (Audit Trail)
+
+| Field | Description |
+|-------|-------------|
+| **Log ticket events** | Turns ticket action history logging on/off (enabled by default) |
+
+When enabled, the system records a chronological trail of what happened to each ticket: who created, assigned, replied to, closed, reopened, forwarded, merged, marked as spam, or redacted it, and when — including actions performed in bulk (e.g. "Close selected"). The log is visible on each ticket's detail page, in the **Event Log** card — see the description in the *My Tickets* chapter.
+
+Turning this option off does **not** delete history already recorded — it only stops new entries from being written. Turning it back on resumes logging from that point.
 
 ---
 

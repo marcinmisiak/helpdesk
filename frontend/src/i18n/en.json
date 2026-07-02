@@ -576,6 +576,8 @@
     "csat_enabled_label": "Send satisfaction survey (CSAT) after closing a ticket",
     "ticket_log_enabled_label": "Record ticket event log",
     "ticket_log_enabled_hint": "Records who assigned, opened, replied to, closed, forwarded, etc. the ticket, and when. Shown on the ticket view.",
+    "user_activity_notify_label": "Notify about user activity",
+    "user_activity_notify_hint": "Shows a notification when another user logs in or leaves the system.",
     "save": "Save settings",
     "saved": "Settings saved"
   },

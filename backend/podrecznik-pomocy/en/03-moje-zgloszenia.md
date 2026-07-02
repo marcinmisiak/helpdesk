@@ -38,10 +38,15 @@ In the attachments section you can:
 - Download attachments by clicking their names
 - Add new files
 
+### Event Log (Ticket History)
+The **Event Log** card shows a chronological history of what happened to the ticket: who created it and when, who it was assigned to (yourself or another worker/team), when it was replied to, its status changes, closing, reopening, forwarding, merging with another ticket, or being marked as spam. Each entry shows the person responsible (or "System" for automatic events, e.g. an incoming email) and the exact time.
+
+This section only appears on the ticket page once it has at least one recorded entry, and only if the administrator hasn't disabled the feature in Settings.
+
 ## Filtering and Sorting
 
 You can filter the ticket list by:
-- **Status** — show only active or closed tickets
+- **Status** — by default only active tickets (new + assigned) are shown; pick a specific status, or the "None (all, regardless of status)" option to also include closed tickets
 - **Priority** — sort by urgency
 - **Date** — from newest or oldest
 

@@ -1851,6 +1851,18 @@ export default function Ustawienia() {
                   </span>
                 </label>
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="powiadom_aktywnosc"
+                  checked={effectiveForm.powiadom_aktywnosc !== undefined ? !!effectiveForm.powiadom_aktywnosc : true}
+                  onChange={setCheck('powiadom_aktywnosc')}
+                />
+                <label htmlFor="powiadom_aktywnosc" className="text-sm">
+                  {t('settings.user_activity_notify_label')}
+                  <span className="block text-xs text-slate-400 font-normal">{t('settings.user_activity_notify_hint')}</span>
+                </label>
+              </div>
             </div>
           </div>
 

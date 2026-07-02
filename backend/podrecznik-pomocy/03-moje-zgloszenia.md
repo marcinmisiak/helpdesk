@@ -38,10 +38,15 @@ W sekcji załączników możesz:
 - Pobierać załączniki klikając ich nazwy
 - Dodawać nowe pliki
 
+### Dziennik zdarzeń (historia zgłoszenia)
+Karta **Dziennik zdarzeń** pokazuje chronologiczną historię tego, co działo się ze zgłoszeniem: kto i kiedy je utworzył, przydzielił (sobie lub innemu pracownikowi/zespołowi), odpowiedział, zmienił status, zamknął, ponownie otworzył, przekazał dalej, scalił z innym zgłoszeniem czy oznaczył jako spam. Przy każdym wpisie widoczna jest osoba (lub „System" dla zdarzeń automatycznych, np. nowej wiadomości e-mail) oraz dokładny czas.
+
+Sekcja pojawia się na stronie zgłoszenia tylko wtedy, gdy ma już jakiś zapisany wpis, i tylko jeśli administrator nie wyłączył tej funkcji w Ustawieniach.
+
 ## Filtrowanie i sortowanie
 
 Listę zgłoszeń możesz filtrować według:
-- **Statusu** — pokaż tylko aktywne lub zamknięte
+- **Statusu** — domyślnie widoczne są tylko aktywne (nowe + przypisane); wybierz konkretny status albo opcję „Brak (wszystkie, bez względu na status)”, żeby zobaczyć też zamknięte
 - **Priorytetu** — sortuj według pilności
 - **Daty** — od najnowszych lub najstarszych
 

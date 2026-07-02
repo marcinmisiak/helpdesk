@@ -58,6 +58,14 @@ Po zapisaniu ustawień możesz użyć przycisku **Wyślij testowy e-mail**, aby 
 | **Powiadamiaj nadawcę o nowym tickecie** | Wysyła e-mail do adminów gdy pojawia się nowe zgłoszenie (gdy nikt nie jest zalogowany) |
 | **Powiadamiaj zgłaszającego o przyjęciu zgłoszenia** | Wysyła e-mail potwierdzający do osoby zgłaszającej zaraz po zarejestrowaniu ticketu — z numerem sprawy. Dotyczy zgłoszeń z e-maila i ręcznie tworzonych przez admina. Formularz publiczny zawsze wysyła potwierdzenie niezależnie od tej opcji. |
 
+### Maile systemowe (bez żadnej automatycznej korespondencji)
+
+Pole tekstowe (jeden adres na linię), w którym możesz wskazać skrzynki, które **nigdy nie powinny dostać żadnej automatycznej wiadomości** z systemu — ani potwierdzenia rejestracji zgłoszenia, ani odpowiedzi pracownika, ani ankiety CSAT, ani przypomnienia o zamknięciu.
+
+Przeznaczone dla automatycznych, niemonitorowanych skrzynek, które trafiają do helpdesku jako "zgłaszający" — np. bramki SMS, systemy monitoringu serwerów, powiadomienia z innych aplikacji. Takie skrzynki zwykle nie odbierają poczty, więc próba wysłania do nich odpowiedzi kończy się zwrotką (bounce/NDR), a dodatkowo — bez tego ustawienia — kolejne, niezależne powiadomienia od tego samego nadawcy z podobnym tematem mogą zostać błędnie dopasowane do jednego, starego zgłoszenia zamiast utworzyć osobne tickety.
+
+> **Jak to działa dokładnie:** dla adresu z tej listy każda nowa wiadomość zawsze zakłada nowy ticket (system nie próbuje dopasować jej po podobieństwie nadawcy i tematu do wcześniejszych zgłoszeń) — chyba że to prawdziwa odpowiedź w wątku (rozpoznana po nagłówku wiadomości) albo temat zawiera numer istniejącego zgłoszenia.
+
 ---
 
 ## Poczta przychodząca (IMAP)
@@ -425,6 +433,18 @@ Pozwala włączyć lub wyłączyć formularz zgłoszeniowy dostępny bez logowan
 Formularz wyświetla przyciski **PL / EN / UA** — odwiedzający może wybrać język. Przy pierwszej wizycie system próbuje automatycznie dopasować język przeglądarki. Wybór jest zapamiętywany w przeglądarce użytkownika.
 
 Formularz publiczny zawsze wysyła e-mail potwierdzający przyjęcie zgłoszenia z numerem sprawy (niezależnie od opcji „Powiadamiaj zgłaszającego o przyjęciu zgłoszenia").
+
+---
+
+## Dziennik zdarzeń zgłoszeń (audyt)
+
+| Pole | Opis |
+|------|------|
+| **Zapisuj dziennik zdarzeń zgłoszenia** | Włącza/wyłącza rejestrowanie historii działań na zgłoszeniach (domyślnie włączone) |
+
+Gdy opcja jest włączona, system zapisuje chronologiczny zapis tego, co działo się z każdym zgłoszeniem: kto i kiedy je utworzył, przydzielił, odpowiedział, zamknął, ponownie otworzył, przekazał, scalił, oznaczył jako spam, zredagował itd. — łącznie z akcjami wykonanymi masowo (np. „Zamknij zaznaczone”). Dziennik jest widoczny na stronie każdego zgłoszenia, w karcie **Dziennik zdarzeń** — patrz opis w rozdziale *Moje zgłoszenia*.
+
+Wyłączenie tej opcji **nie usuwa** już zapisanej historii — wstrzymuje tylko zapisywanie nowych wpisów. Włączenie jej z powrotem wznawia rejestrowanie od tego momentu.
 
 ---
 

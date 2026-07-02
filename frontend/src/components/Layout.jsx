@@ -166,12 +166,12 @@ export default function Layout({ children }) {
     onNewReply: (id) => showNotif('💬', t('toast.new_reply'), id ? `/tickets/${id}` : '/moje'),
     onAssigned: (id) => showNotif('📋', t('toast.assigned'), id ? `/tickets/${id}` : '/moje'),
     onUserOnline: (u) => {
-      if (u.id !== user?.id) {
+      if (u.id !== user?.id && branding?.powiadom_aktywnosc) {
         showNotif('🟢', `${u.imie} ${u.nazwisko} ${t('toast.user_online')}`, null);
       }
     },
     onUserOffline: (u) => {
-      if (u.id !== user?.id) {
+      if (u.id !== user?.id && branding?.powiadom_aktywnosc) {
         showNotif('🔴', `${u.imie} ${u.nazwisko} ${t('toast.user_offline')}`, null);
       }
     },
