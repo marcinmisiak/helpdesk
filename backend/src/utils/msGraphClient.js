@@ -152,7 +152,7 @@ async function getUnreadMessages(settings) {
 
   const params = new URLSearchParams({
     '$filter': 'isRead eq false',
-    '$select': 'id,subject,from,toRecipients,ccRecipients,body,internetMessageId,internetMessageHeaders',
+    '$select': 'id,subject,from,toRecipients,ccRecipients,body,internetMessageId,internetMessageHeaders,sentDateTime',
     '$top': '50',
     '$orderby': 'receivedDateTime asc',
   });

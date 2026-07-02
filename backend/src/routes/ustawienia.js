@@ -116,6 +116,7 @@ router.put('/', requireAdmin, async (req, res) => {
       'ticket_czas_ostrzezenia', 'ticket_czas_zamykania',
       'powiadom_nadawce',
       'powiadom_rejestracja',
+      'system_email_list',
       // LDAP
       'ldap_enabled', 'ldap_host', 'ldap_port', 'ldap_base_dn',
       'ldap_bind_dn', 'ldap_bind_password', 'ldap_user_filter',
@@ -151,6 +152,8 @@ router.put('/', requireAdmin, async (req, res) => {
       'status_otp_enabled',
       // Archiwizacja starych folderów załączników
       'archive_path',
+      // Dziennik zdarzeń ticketu
+      'ticket_log_enabled',
     ];
     const updates = [];
     const values = [];

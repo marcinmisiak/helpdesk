@@ -4,6 +4,19 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import toast from 'react-hot-toast';
 
+// Etykieta po lewej / pole po prawej na desktopie (sm i szersze), pod spodem na komórce.
+function Field({ label, hint, children }) {
+  return (
+    <div className="sm:grid sm:grid-cols-[180px_1fr] sm:items-start gap-1 sm:gap-4">
+      <label className="label sm:pt-2">{label}</label>
+      <div>
+        {children}
+        {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+      </div>
+    </div>
+  );
+}
+
 function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
   const { t } = useTranslation();
   const [form, setForm] = useState({
@@ -18,6 +31,9 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
     imap_login: channel?.imap_login || '',
     imap_password: '',
     imap_path: channel?.imap_path || '',
+    imap_delete_after_fetch: !!channel?.imap_delete_after_fetch,
+    imap_fetch_seen: !!channel?.imap_fetch_seen,
+    auto_close_ticket: !!channel?.auto_close_ticket,
     ms_graph_enabled: !!channel?.ms_graph_enabled,
     ms_graph_mailbox: channel?.ms_graph_mailbox || '',
   });
@@ -69,34 +85,30 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md dark:bg-gray-800">
-        <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col dark:bg-gray-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700 shrink-0">
           <h3 className="font-semibold dark:text-gray-100">{isEdit ? t('chat_channels.modal_edit_title') : t('chat_channels.modal_new_title')}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
         </div>
-        <div className="p-4 space-y-3">
-          <div>
-            <label className="label">{t('chat_channels.field_name')}</label>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          <Field label={t('chat_channels.field_name')}>
             <input value={form.nazwa} onChange={set('nazwa')} className="input" />
-          </div>
-          <div>
-            <label className="label">{t('chat_channels.field_team')}</label>
+          </Field>
+          <Field label={t('chat_channels.field_team')}>
             <select value={form.zespol_id} onChange={set('zespol_id')} className="input">
               <option value="">{t('chat_channels.field_team_choose')}</option>
               {zespoly?.map((z) => (
                 <option key={z.id} value={z.id}>{z.nazwa}</option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="label">{t('chat_channels.field_type')}</label>
+          </Field>
+          <Field label={t('chat_channels.field_type')}>
             <select value={form.typ} onChange={set('typ')} className="input">
               <option value="chat">{t('chat_channels.field_type_chat')}</option>
               <option value="email">{t('chat_channels.field_type_email')}</option>
             </select>
-          </div>
-          <div>
-            <label className="label">{t('chat_channels.field_notification_email')}</label>
+          </Field>
+          <Field label={t('chat_channels.field_notification_email')} hint={t('chat_channels.field_notification_email_hint')}>
             <input
               type="email"
               value={form.notification_email}
@@ -104,12 +116,10 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
               placeholder="zespol@example.com"
               className="input"
             />
-            <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_notification_email_hint')}</p>
-          </div>
+          </Field>
           {form.typ === 'chat' ? (
             <>
-              <div>
-                <label className="label">{t('chat_channels.field_domains')}</label>
+              <Field label={t('chat_channels.field_domains')} hint={t('chat_channels.field_domains_hint')}>
                 <textarea
                   value={form.dozwolone_domeny}
                   onChange={set('dozwolone_domeny')}
@@ -117,17 +127,14 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
                   placeholder={t('chat_channels.field_domains_placeholder')}
                   className="input resize-y"
                 />
-                <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_domains_hint')}</p>
-              </div>
-              <div>
-                <label className="label">{t('chat_channels.field_welcome')}</label>
+              </Field>
+              <Field label={t('chat_channels.field_welcome')}>
                 <input value={form.powitanie} onChange={set('powitanie')} className="input" />
-              </div>
+              </Field>
             </>
           ) : (
             <>
-              <div>
-                <label className="label">{t('chat_channels.field_connection')}</label>
+              <Field label={t('chat_channels.field_connection')}>
                 <select
                   value={form.ms_graph_enabled ? 'graph' : 'imap'}
                   onChange={(e) => setForm((f) => ({ ...f, ms_graph_enabled: e.target.value === 'graph' }))}
@@ -136,57 +143,96 @@ function ChannelModal({ channel, zespoly, onClose, onSuccess }) {
                   <option value="imap">{t('chat_channels.field_connection_imap')}</option>
                   <option value="graph">{t('chat_channels.field_connection_graph')}</option>
                 </select>
-              </div>
+              </Field>
               {form.ms_graph_enabled ? (
-                <div>
-                  <label className="label">{t('chat_channels.field_ms_graph_mailbox')}</label>
+                <Field label={t('chat_channels.field_ms_graph_mailbox')} hint={t('chat_channels.field_ms_graph_mailbox_hint')}>
                   <input value={form.ms_graph_mailbox} onChange={set('ms_graph_mailbox')} className="input" placeholder="it@example.com" />
-                  <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_ms_graph_mailbox_hint')}</p>
-                </div>
+                </Field>
               ) : (
                 <>
-                  <div>
-                    <label className="label">{t('chat_channels.field_imap_server')}</label>
+                  <Field label={t('chat_channels.field_imap_server')}>
                     <input value={form.imap_server} onChange={set('imap_server')} className="input" placeholder="imap.example.com" />
-                  </div>
-                  <div>
-                    <label className="label">{t('chat_channels.field_imap_port')}</label>
+                  </Field>
+                  <Field label={t('chat_channels.field_imap_port')}>
                     <input type="number" value={form.imap_port} onChange={set('imap_port')} className="input" placeholder="993" />
-                  </div>
-                  <div>
-                    <label className="label">{t('chat_channels.field_imap_login')}</label>
+                  </Field>
+                  <Field label={t('chat_channels.field_imap_login')}>
                     <input value={form.imap_login} onChange={set('imap_login')} className="input" />
-                  </div>
-                  <div>
-                    <label className="label">{t('chat_channels.field_imap_password')}</label>
-                    <input type="password" value={form.imap_password} onChange={set('imap_password')} className="input" />
-                    <p className="text-xs text-gray-400 mt-1">{t('chat_channels.field_imap_password_hint')}</p>
-                  </div>
-                  <div>
-                    <label className="label">{t('chat_channels.field_imap_path')}</label>
+                  </Field>
+                  <Field label={t('chat_channels.field_imap_password')} hint={t('chat_channels.field_imap_password_hint')}>
+                    <input type="password" autoComplete="new-password" value={form.imap_password} onChange={set('imap_password')} className="input" />
+                  </Field>
+                  <Field label={t('chat_channels.field_imap_path')}>
                     <input value={form.imap_path} onChange={set('imap_path')} className="input" placeholder="INBOX" />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={testImap}
-                      disabled={testing || !form.imap_server || !form.imap_login}
-                      className="btn-secondary btn-sm"
-                    >
-                      {testing ? t('chat_channels.testing') : t('chat_channels.test_connection')}
-                    </button>
-                    {testResult && (
-                      <span className={`text-sm ${testResult.ok ? 'text-green-600' : 'text-red-600'}`}>
-                        {testResult.ok ? '✓' : '✕'} {testResult.msg}
-                      </span>
-                    )}
-                  </div>
+                  </Field>
+                  <Field label={t('chat_channels.field_imap_delete_after_fetch')}>
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        id="imap_delete_after_fetch"
+                        checked={form.imap_delete_after_fetch}
+                        onChange={(e) => setForm((f) => ({ ...f, imap_delete_after_fetch: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <label htmlFor="imap_delete_after_fetch" className="text-xs text-gray-400 cursor-pointer">
+                        {t('chat_channels.field_imap_delete_after_fetch_hint')}
+                      </label>
+                    </div>
+                  </Field>
+                  <Field label={t('chat_channels.field_imap_fetch_seen')}>
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        id="imap_fetch_seen"
+                        checked={form.imap_fetch_seen}
+                        onChange={(e) => setForm((f) => ({ ...f, imap_fetch_seen: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <label
+                        htmlFor="imap_fetch_seen"
+                        className={`text-xs cursor-pointer ${form.imap_fetch_seen && !form.imap_delete_after_fetch ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'}`}
+                      >
+                        {t('chat_channels.field_imap_fetch_seen_hint')}
+                      </label>
+                    </div>
+                  </Field>
+                  <Field label={t('chat_channels.field_auto_close_ticket')}>
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        id="auto_close_ticket"
+                        checked={form.auto_close_ticket}
+                        onChange={(e) => setForm((f) => ({ ...f, auto_close_ticket: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <label htmlFor="auto_close_ticket" className="text-xs text-gray-400 cursor-pointer">
+                        {t('chat_channels.field_auto_close_ticket_hint')}
+                      </label>
+                    </div>
+                  </Field>
+                  <Field label="">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={testImap}
+                        disabled={testing || !form.imap_server || !form.imap_login}
+                        className="btn-secondary btn-sm"
+                      >
+                        {testing ? t('chat_channels.testing') : t('chat_channels.test_connection')}
+                      </button>
+                      {testResult && (
+                        <span className={`text-sm ${testResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+                          {testResult.ok ? '✓' : '✕'} {testResult.msg}
+                        </span>
+                      )}
+                    </div>
+                  </Field>
                 </>
               )}
             </>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-4 py-3 border-t dark:border-gray-700">
+        <div className="flex justify-end gap-2 px-4 py-3 border-t dark:border-gray-700 shrink-0">
           <button onClick={onClose} className="btn-secondary">{t('chat_channels.cancel')}</button>
           <button onClick={save} className="btn-primary">{t('chat_channels.save')}</button>
         </div>

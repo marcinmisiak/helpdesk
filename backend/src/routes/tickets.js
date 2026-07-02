@@ -17,6 +17,7 @@ const { maybeSendCsatSurvey } = require('../utils/csat');
 const { sendTicketReply } = require('../utils/ticketReply');
 const { sendWebhookEvent } = require('../utils/webhookClient');
 const { getArchivedMonthsSet } = require('../utils/archiveManager');
+const { logTicketEvent } = require('../utils/ticketLog');
 
 // Załączniki są zapisywane jako "<YYYY-MM>/<nazwa>" (patrz multer storage poniżej) —
 // pierwsze 7 znaków filepath to miesiąc; sprawdzamy go względem plik_archiwum, żeby
@@ -52,7 +53,9 @@ router.get('/', async (req, res) => {
     const params = [];
     let where = "(t.ai_tag != 'spam' OR t.ai_tag IS NULL)";
 
-    if (status) {
+    if (status === 'all') {
+      // brak filtra statusu — pokaż wszystkie, łącznie z zamkniętymi
+    } else if (status) {
       where += ' AND t.status = ?';
       params.push(status);
     } else if (!odlozone) {
@@ -297,6 +300,7 @@ router.get('/:id', async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT t.*,
+              UNIX_TIMESTAMP(t.message_date) as message_date,
               GROUP_CONCAT(DISTINCT uht.user_id) as przypisani_ids,
               GROUP_CONCAT(DISTINCT CONCAT(u.imie, ' ', u.nazwisko) SEPARATOR ', ') as przypisani,
               GROUP_CONCAT(DISTINCT zht.zespol_id) as zespoly_ids,
@@ -392,7 +396,7 @@ router.get('/:id', async (req, res) => {
 
     // korespondencja
     const [koresp] = await pool.query(
-      `SELECT k.*, u.imie, u.nazwisko, u.avatar_path FROM korespondencja k
+      `SELECT k.*, UNIX_TIMESTAMP(k.message_date) as message_date, u.imie, u.nazwisko, u.avatar_path FROM korespondencja k
        LEFT JOIN user u ON u.id = k.created_by
        WHERE k.ticket_id = ? ORDER BY k.data ASC`,
       [req.params.id]
@@ -403,6 +407,15 @@ router.get('/:id', async (req, res) => {
       'SELECT * FROM notatka WHERE ticket_id = ? ORDER BY data ASC',
       [req.params.id]
     );
+
+    // dziennik zdarzeń
+    const [logRows] = await pool.query(
+      `SELECT tl.*, u.imie, u.nazwisko, u.avatar_path
+       FROM ticket_log tl LEFT JOIN user u ON u.id = tl.user_id
+       WHERE tl.ticket_id = ? ORDER BY tl.created_at ASC, tl.id ASC`,
+      [req.params.id]
+    );
+    const log = logRows.map(l => ({ ...l, meta: l.meta ? JSON.parse(l.meta) : null }));
 
     const archivedMonths = await getArchivedMonthsSet();
 
@@ -431,10 +444,13 @@ router.get('/:id', async (req, res) => {
       korWithPliki = koresp.map(k => ({ ...k, pliki: byKorId[k.id] || [] }));
     }
 
-    // przypisania
+    // przypisania (razem z danymi tego, kto dokonał przydziału — user_has_ticket.created_by)
     const [przypisania] = await pool.query(
-      `SELECT uht.*, u.imie, u.nazwisko, u.email FROM user_has_ticket uht
+      `SELECT uht.*, u.imie, u.nazwisko, u.email,
+              ub.imie AS przydzielil_imie, ub.nazwisko AS przydzielil_nazwisko
+       FROM user_has_ticket uht
        LEFT JOIN user u ON u.id = uht.user_id
+       LEFT JOIN user ub ON ub.id = uht.created_by
        WHERE uht.ticket_id = ?`,
       [req.params.id]
     );
@@ -448,7 +464,7 @@ router.get('/:id', async (req, res) => {
     );
 
     const enrichedTicket = enrichTicketSla(ticket);
-    res.json({ ticket: enrichedTicket, korespondencja: korWithPliki, notatki, pliki: plikiTicket, przypisania, zespoly });
+    res.json({ ticket: enrichedTicket, korespondencja: korWithPliki, notatki, pliki: plikiTicket, przypisania, zespoly, log });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -493,6 +509,13 @@ router.post('/', requireAdmin, async (req, res) => {
       message: { tresc, html, from: message_from },
     }).catch(() => {});
 
+    logTicketEvent(result.insertId, {
+      typ: 'created',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+      meta: { source: 'manual' },
+    });
+
     res.status(201).json({ id: result.insertId, numer, priority: normalizedPriority });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -507,6 +530,11 @@ router.put('/:id', requireAdmin, async (req, res) => {
       'UPDATE ticket SET message_from=?, message_to=?, message_subject=?, tresc=?, html=?, message_cc=? WHERE id=?',
       [message_from, message_to, message_subject, tresc, html, message_cc || '', req.params.id]
     );
+    logTicketEvent(req.params.id, {
+      typ: 'edited',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -518,6 +546,12 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const now = Math.floor(Date.now() / 1000);
     await pool.query('UPDATE ticket SET status=3, data_zamkniecia=? WHERE id=?', [now, req.params.id]);
+    logTicketEvent(req.params.id, {
+      typ: 'closed',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+      meta: { viaDelete: true },
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -541,6 +575,7 @@ router.delete('/:id/trwale', requireAdmin, async (req, res) => {
     await pool.query('DELETE FROM notatka WHERE ticket_id = ?', [req.params.id]).catch(() => {});
     await pool.query('DELETE FROM user_has_ticket WHERE ticket_id = ?', [req.params.id]);
     await pool.query('DELETE FROM alert WHERE ticket_id = ?', [req.params.id]).catch(() => {});
+    await pool.query('DELETE FROM ticket_log WHERE ticket_id = ?', [req.params.id]).catch(() => {});
     await pool.query('UPDATE ticket SET merged_into_id = NULL WHERE merged_into_id = ?', [req.params.id]).catch(() => {});
     await pool.query('DELETE FROM ticket WHERE id = ?', [req.params.id]);
 
@@ -602,6 +637,12 @@ router.post('/:id/przydziel', async (req, res) => {
       const [[worker]] = await pool.query(
         'SELECT email, imie, nazwisko FROM user WHERE id = ?', [user_id]
       );
+      logTicketEvent(req.params.id, {
+        typ: 'assigned',
+        userId: req.user.id,
+        actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+        meta: { workerName: worker ? `${worker.imie} ${worker.nazwisko}` : null },
+      });
       if (worker?.email && ticket) {
         const baseUrl = await getSiteUrl();
         const appName = await getAppName();
@@ -671,6 +712,13 @@ router.delete('/:id/przydziel/:user_id', async (req, res) => {
       await pool.query('UPDATE ticket SET status=1 WHERE id=?', [req.params.id]);
     }
 
+    logTicketEvent(req.params.id, {
+      typ: 'unassigned',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+      meta: { workerName: worker ? `${worker.imie} ${worker.nazwisko}` : null },
+    });
+
     // Powiadom odpiętego pracownika
     if (worker?.email && ticket) {
       const baseUrl = await getSiteUrl();
@@ -733,6 +781,13 @@ router.post('/:id/przydziel-zespol', async (req, res) => {
       const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [zespol_id]);
       const memberIds = members.map(m => m.user_id);
 
+      logTicketEvent(req.params.id, {
+        typ: 'assigned_team',
+        userId: req.user.id,
+        actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+        meta: { teamName: zespol?.nazwa || null },
+      });
+
       if (ticket && memberIds.length) {
         notifyUsers(memberIds, {
           title: `Przydzielono zgłoszenie zespołowi: ${zespol?.nazwa || ''}`,
@@ -752,10 +807,17 @@ router.post('/:id/przydziel-zespol', async (req, res) => {
 // DELETE /api/tickets/:id/przydziel-zespol/:zespol_id
 router.delete('/:id/przydziel-zespol/:zespol_id', async (req, res) => {
   try {
+    const [[zespol]] = await pool.query('SELECT nazwa FROM zespol WHERE id = ?', [req.params.zespol_id]);
     await pool.query(
       'DELETE FROM zespol_has_ticket WHERE ticket_id = ? AND zespol_id = ?',
       [req.params.id, req.params.zespol_id]
     );
+    logTicketEvent(req.params.id, {
+      typ: 'unassigned_team',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+      meta: { teamName: zespol?.nazwa || null },
+    });
     const [[{ cntUser }]] = await pool.query(
       'SELECT COUNT(*) as cntUser FROM user_has_ticket WHERE ticket_id = ?',
       [req.params.id]
@@ -844,6 +906,11 @@ router.post('/:id/zamknij', async (req, res) => {
 
     await pool.query('UPDATE ticket SET status=3, data_zamkniecia=?, odlozony=0 WHERE id=?', [now, req.params.id]);
     maybeSendCsatSurvey(req.params.id).catch(() => {});
+    logTicketEvent(req.params.id, {
+      typ: 'closed',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+    });
 
     // Email do zgłaszającego o zamknięciu
     if (sendNotification && ticket?.message_from) {
@@ -881,6 +948,11 @@ router.post('/:id/zamknij', async (req, res) => {
 router.post('/:id/otworz', async (req, res) => {
   try {
     await pool.query('UPDATE ticket SET status=2, data_zamkniecia=NULL WHERE id=?', [req.params.id]);
+    logTicketEvent(req.params.id, {
+      typ: 'reopened',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -893,6 +965,7 @@ router.post('/:id/status', async (req, res) => {
     const newStatus = parseInt(req.body.status);
     if (![1, 2, 3].includes(newStatus)) return res.status(400).json({ error: 'Nieprawidłowy status' });
     const now = Math.floor(Date.now() / 1000);
+    const [[before]] = await pool.query('SELECT status FROM ticket WHERE id = ?', [req.params.id]);
     if (newStatus === 3) {
       await pool.query('UPDATE ticket SET status=3, data_zamkniecia=? WHERE id=?', [now, req.params.id]);
       maybeSendCsatSurvey(req.params.id).catch(() => {});
@@ -901,6 +974,12 @@ router.post('/:id/status', async (req, res) => {
     } else {
       await pool.query('UPDATE ticket SET status=2, data_zamkniecia=NULL WHERE id=?', [req.params.id]);
     }
+    logTicketEvent(req.params.id, {
+      typ: 'status_changed',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+      meta: { from: before?.status ?? null, to: newStatus },
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -982,6 +1061,10 @@ router.post('/:id/merge', async (req, res) => {
       [target.id]
     );
 
+    const actorLabel = `${req.user.imie} ${req.user.nazwisko}`;
+    logTicketEvent(sourceId, { typ: 'merged', userId: req.user.id, actorLabel, meta: { targetNumer: target.numer } });
+    logTicketEvent(target.id, { typ: 'merged_from', userId: req.user.id, actorLabel, meta: { sourceNumer: source.numer } });
+
     res.json({ success: true, targetId: target.id, targetNumer: target.numer });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -993,6 +1076,12 @@ router.post('/:id/odloz', async (req, res) => {
   try {
     const { data } = req.body;
     await pool.query('UPDATE ticket SET odlozony=1, odlozony_data=? WHERE id=?', [data, req.params.id]);
+    logTicketEvent(req.params.id, {
+      typ: 'deferred',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+      meta: { until: data },
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1012,6 +1101,11 @@ router.post('/:id/redact', requireAdmin, async (req, res) => {
       'UPDATE ticket SET tresc = ?, html = ? WHERE id = ?',
       [redactedText, redactedHtml, req.params.id]
     );
+    logTicketEvent(req.params.id, {
+      typ: 'redacted',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+    });
 
     // Zaloguj akcję w notatkach wewnętrznych
     const now = Math.floor(Date.now() / 1000);
@@ -1037,6 +1131,11 @@ router.post('/:id/redact', requireAdmin, async (req, res) => {
 router.post('/:id/przywroc', async (req, res) => {
   try {
     await pool.query('UPDATE ticket SET odlozony=0, odlozony_data=NULL WHERE id=?', [req.params.id]);
+    logTicketEvent(req.params.id, {
+      typ: 'restored',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1163,6 +1262,7 @@ router.post('/masowe-usun', requireAdmin, async (req, res) => {
     await pool.query(`DELETE FROM notatka WHERE ticket_id IN (${cph})`, closedIds).catch(() => {});
     await pool.query(`DELETE FROM user_has_ticket WHERE ticket_id IN (${cph})`, closedIds);
     await pool.query(`DELETE FROM alert WHERE ticket_id IN (${cph})`, closedIds).catch(() => {});
+    await pool.query(`DELETE FROM ticket_log WHERE ticket_id IN (${cph})`, closedIds).catch(() => {});
     await pool.query(`DELETE FROM ticket WHERE id IN (${cph})`, closedIds);
 
     res.json({ success: true, deleted: closedIds.length, skipped: ids.length - closedIds.length });
@@ -1181,6 +1281,10 @@ router.post('/masowe', requireAdmin, async (req, res) => {
       `UPDATE ticket SET status=3, data_zamkniecia=? WHERE id IN (${ids.map(() => '?').join(',')})`,
       [now, ...ids]
     );
+    const bulkActorLabel = `${req.user.imie} ${req.user.nazwisko}`;
+    for (const ticketId of ids) {
+      logTicketEvent(ticketId, { typ: 'closed', userId: req.user.id, actorLabel: bulkActorLabel, meta: { bulk: true } });
+    }
     res.json({ success: true, count: ids.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1196,8 +1300,11 @@ router.post('/masowe-przydziel', requireAdmin, async (req, res) => {
 
     const now = Math.floor(Date.now() / 1000);
     const placeholders = ids.map(() => '?').join(',');
+    const bulkActorLabel = `${req.user.imie} ${req.user.nazwisko}`;
 
     if (user_id) {
+      const [[worker]] = await pool.query('SELECT imie, nazwisko FROM user WHERE id = ?', [user_id]);
+      const workerName = worker ? `${worker.imie} ${worker.nazwisko}` : null;
       for (const ticketId of ids) {
         const [existing] = await pool.query(
           'SELECT id FROM user_has_ticket WHERE ticket_id = ? AND user_id = ?',
@@ -1209,6 +1316,7 @@ router.post('/masowe-przydziel', requireAdmin, async (req, res) => {
             [ticketId, user_id, now, req.user.id, req.user.id, now, now]
           );
           await syncZespolForAssignee(ticketId, user_id, req.user.id).catch(() => {});
+          logTicketEvent(ticketId, { typ: 'assigned', userId: req.user.id, actorLabel: bulkActorLabel, meta: { workerName, bulk: true } });
         }
       }
       await pool.query(`UPDATE ticket SET status=2 WHERE id IN (${placeholders})`, ids);
@@ -1218,6 +1326,7 @@ router.post('/masowe-przydziel', requireAdmin, async (req, res) => {
         url: '/moje',
       }).catch(() => {});
     } else {
+      const [[zespol]] = await pool.query('SELECT nazwa FROM zespol WHERE id = ?', [zespol_id]);
       for (const ticketId of ids) {
         const [existing] = await pool.query(
           'SELECT id FROM zespol_has_ticket WHERE ticket_id = ? AND zespol_id = ?',
@@ -1228,11 +1337,11 @@ router.post('/masowe-przydziel', requireAdmin, async (req, res) => {
             'INSERT INTO zespol_has_ticket (ticket_id, zespol_id, created_at, created_by) VALUES (?, ?, ?, ?)',
             [ticketId, zespol_id, now, req.user.id]
           );
+          logTicketEvent(ticketId, { typ: 'assigned_team', userId: req.user.id, actorLabel: bulkActorLabel, meta: { teamName: zespol?.nazwa || null, bulk: true } });
         }
       }
       // Przydzielenie do zespołu samo nie zmienia statusu — patrz komentarz przy /:id/przydziel-zespol.
       const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [zespol_id]);
-      const [[zespol]] = await pool.query('SELECT nazwa FROM zespol WHERE id = ?', [zespol_id]);
       notifyUsers(members.map(m => m.user_id), {
         title: `Przydzielono ${ids.length} zgłoszeń zespołowi: ${zespol?.nazwa || ''}`,
         body: 'Sprawdź listę "Moje zgłoszenia"',
@@ -1256,6 +1365,16 @@ router.post('/masowe-kategoria', requireAdmin, async (req, res) => {
       `UPDATE ticket SET kategoria_id=? WHERE id IN (${ids.map(() => '?').join(',')})`,
       [kategoria_id, ...ids]
     );
+    const [[kategoria]] = await pool.query('SELECT nazwa FROM kategoria_zgloszenia WHERE id = ?', [kategoria_id]).catch(() => [[null]]);
+    const bulkActorLabel = `${req.user.imie} ${req.user.nazwisko}`;
+    for (const ticketId of ids) {
+      logTicketEvent(ticketId, {
+        typ: 'category_changed',
+        userId: req.user.id,
+        actorLabel: bulkActorLabel,
+        meta: { categoryName: kategoria?.nazwa || null, bulk: true },
+      });
+    }
     res.json({ success: true, count: ids.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1342,6 +1461,11 @@ router.post('/:id/nie-spam', requireAdmin, async (req, res) => {
 
     const email = extractEmail(ticket.message_from);
     await rememberSenderStatus({ email, typ: 'zaufany', reason: 'Oznaczone ręcznie jako nie-spam', ticketId: req.params.id });
+    logTicketEvent(req.params.id, {
+      typ: 'spam_unmarked',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+    });
 
     res.json({ success: true });
   } catch (err) {
@@ -1359,6 +1483,11 @@ router.post('/:id/spam', async (req, res) => {
 
     const email = extractEmail(ticket.message_from);
     await rememberSenderStatus({ email, ip: ticket.zrodlo_ip, typ: 'spam', reason: 'Oznaczone ręcznie jako spam', ticketId: req.params.id });
+    logTicketEvent(req.params.id, {
+      typ: 'spam_marked',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+    });
 
     res.json({ success: true });
   } catch (err) {
@@ -1451,6 +1580,13 @@ router.post('/:id/przekaz', async (req, res) => {
         msgId || null,
       ]
     );
+
+    logTicketEvent(req.params.id, {
+      typ: 'forwarded',
+      userId: req.user.id,
+      actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+      meta: { email: email_do },
+    });
 
     res.json({ success: true, mailError });
   } catch (err) {

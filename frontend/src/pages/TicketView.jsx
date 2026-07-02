@@ -624,11 +624,16 @@ export default function TicketView() {
     onError: (err) => toast.error(err.response?.data?.error || t('common.error')),
   });
 
-  // Nie odświeżamy zapytania ['ticket', id] — GET /tickets/:id czyści `podswietl`
-  // przy każdym wejściu na ticket, co natychmiast cofnęłoby to oznaczenie.
+  // GET /tickets/:id czyści `podswietl` przy każdym wejściu na ticket — zostając na
+  // stronie tego ticketu natychmiast cofnęlibyśmy własne oznaczenie, dlatego po
+  // sukcesie przechodzimy na listę zamiast odświeżać ['ticket', id].
   const markNewMessage = useMutation({
     mutationFn: () => api.post(`/tickets/${id}/nowa-wiadomosc`),
-    onSuccess: () => { toast.success(t('ticket_view.toast_marked_new_message')); qc.invalidateQueries(['tickets']); },
+    onSuccess: () => {
+      toast.success(t('ticket_view.toast_marked_new_message'));
+      qc.invalidateQueries(['tickets']);
+      navigate('/tickets');
+    },
     onError: (err) => toast.error(err.response?.data?.error || t('common.error')),
   });
 
@@ -671,7 +676,7 @@ export default function TicketView() {
   if (isLoading) return <div className="text-center py-12 text-gray-500 dark:text-gray-400">{t('common.loading')}</div>;
   if (error) return <div className="text-center py-12 text-red-500">{t('ticket_view.error_loading')}</div>;
 
-  const { ticket, korespondencja, notatki, pliki, przypisania, zespoly } = data;
+  const { ticket, korespondencja, notatki, pliki, przypisania, zespoly, log } = data;
   const isOpen = ticket.status !== 3;
 
   return (
@@ -898,24 +903,40 @@ export default function TicketView() {
           </div>
           {ticket.message_cc && <div><dt className="label">CC</dt><dd className="text-gray-700 dark:text-gray-200">{ticket.message_cc}</dd></div>}
           <div><dt className="label">{t('ticket_view.field_date')}</dt><dd className="text-gray-700 dark:text-gray-200">{formatDate(ticket.data_utworzenia)}</dd></div>
+          {ticket.zrodlo === 'email' && ticket.message_date && (
+            <div><dt className="label">{t('ticket_view.field_message_date')}</dt><dd className="text-gray-700 dark:text-gray-200">{formatDate(ticket.message_date)}</dd></div>
+          )}
           {ticket.data_otwarcia && <div><dt className="label">{t('ticket_view.field_opened')}</dt><dd className="text-gray-700 dark:text-gray-200">{formatDate(ticket.data_otwarcia)}</dd></div>}
           {ticket.data_zamkniecia && <div><dt className="label">{t('ticket_view.field_closed_at')}</dt><dd className="text-gray-700 dark:text-gray-200">{formatDate(ticket.data_zamkniecia)}</dd></div>}
           {przypisania?.length > 0 && (
             <div className="col-span-2">
               <dt className="label">{t('ticket_view.field_assigned')}</dt>
               <dd className="flex flex-wrap gap-2">
-                {przypisania.map(p => (
-                  <span key={p.id} className="flex items-center gap-1 badge-blue">
-                    {p.imie} {p.nazwisko}
-                    {isAdmin && (
-                      <button
-                        onClick={() => usunPrzydzial.mutate(p.user_id)}
-                        className="text-blue-400 hover:text-red-500 ml-1"
-                        title={t('ticket_view.toast_unassigned')}
-                      >×</button>
-                    )}
-                  </span>
-                ))}
+                {przypisania.map(p => {
+                  const assignerName = p.przydzielil_imie ? `${p.przydzielil_imie} ${p.przydzielil_nazwisko}` : null;
+                  const assignedBySomeoneElse = assignerName && assignerName !== `${p.imie} ${p.nazwisko}`;
+                  return (
+                    <span
+                      key={p.id}
+                      className="flex items-center gap-1 badge-blue"
+                      title={assignerName ? t('ticket_view.assigned_by', { name: assignerName }) : undefined}
+                    >
+                      {p.imie} {p.nazwisko}
+                      {assignedBySomeoneElse && (
+                        <span className="text-blue-400 dark:text-blue-300 font-normal">
+                          ({t('ticket_view.assigned_by', { name: assignerName })})
+                        </span>
+                      )}
+                      {isAdmin && (
+                        <button
+                          onClick={() => usunPrzydzial.mutate(p.user_id)}
+                          className="text-blue-400 hover:text-red-500 ml-1"
+                          title={t('ticket_view.toast_unassigned')}
+                        >×</button>
+                      )}
+                    </span>
+                  );
+                })}
               </dd>
             </div>
           )}
@@ -1015,6 +1036,8 @@ export default function TicketView() {
           </div>
         </div>
       )}
+
+      {log?.length > 0 && <TicketLogSection log={log} />}
 
       <div className="card">
         <h3 className="font-semibold mb-3">{t('ticket_view.notes_title', { count: notatki?.length || 0 })}</h3>
@@ -1193,7 +1216,7 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
           <span className="text-xs text-gray-400 dark:text-gray-500">
-            {k.data ? format(new Date(k.data * 1000), 'dd.MM.yyyy HH:mm', { locale }) : ''}
+            {(k.message_date || k.data) ? format(new Date((k.message_date || k.data) * 1000), 'dd.MM.yyyy HH:mm', { locale }) : ''}
           </span>
           {isAdmin && (
             <button
@@ -1268,6 +1291,78 @@ function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+const TICKET_LOG_ICONS = {
+  created: '🆕',
+  edited: '✏️',
+  assigned: '👤',
+  unassigned: '👤',
+  assigned_team: '👥',
+  unassigned_team: '👥',
+  replied: '💬',
+  forwarded: '📤',
+  merged: '🔗',
+  merged_from: '🔗',
+  closed: '🔒',
+  reopened: '🔓',
+  status_changed: '🔄',
+  deferred: '⏸️',
+  restored: '▶️',
+  redacted: '🕵️',
+  spam_marked: '🚫',
+  spam_unmarked: '✅',
+  customer_reply: '✉️',
+  customer_closed: '🔒',
+  category_changed: '🏷️',
+};
+
+const STATUS_LABEL_KEYS = { 1: 'status_new', 2: 'status_inprogress', 3: 'status_closed' };
+
+function TicketLogItem({ l }) {
+  const { t } = useTranslation();
+  const locale = useDateLocale();
+  const icon = TICKET_LOG_ICONS[l.typ] || '•';
+  const meta = l.meta || {};
+  const statusLabel = (s) => (STATUS_LABEL_KEYS[s] ? t(`ticket_view.${STATUS_LABEL_KEYS[s]}`) : s);
+  const label = t(`ticket_log.events.${l.typ}`, {
+    ...meta,
+    source: meta.source ? t(`ticket_log.sources.${meta.source}`, meta.source) : '',
+    from: l.typ === 'status_changed' ? statusLabel(meta.from) : meta.from,
+    to: l.typ === 'status_changed' ? statusLabel(meta.to) : meta.to,
+    defaultValue: l.typ,
+  });
+  const actorName = l.imie ? `${l.imie} ${l.nazwisko}` : (l.actor_label || t('ticket_log.system'));
+
+  return (
+    <div className="flex items-start gap-2 text-sm py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-0">
+      <span className="flex-shrink-0">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <span className="text-gray-800 dark:text-gray-200">{label}</span>
+        {meta.bulk && (
+          <span className="text-xs text-gray-400 dark:text-gray-500"> {t('ticket_log.bulk_suffix')}</span>
+        )}
+        <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+          {l.imie && <Avatar imie={l.imie} nazwisko={l.nazwisko} avatarPath={l.avatar_path} className="w-4 h-4 text-[8px] flex-shrink-0" />}
+          <span>{actorName}</span>
+          <span>·</span>
+          <span>{format(new Date(l.created_at * 1000), 'dd.MM.yyyy HH:mm', { locale })}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TicketLogSection({ log }) {
+  const { t } = useTranslation();
+  return (
+    <div className="card mb-4">
+      <h3 className="font-semibold mb-2">{t('ticket_log.title', { count: log.length })}</h3>
+      <div>
+        {log.map(l => <TicketLogItem key={l.id} l={l} />)}
+      </div>
     </div>
   );
 }

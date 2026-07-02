@@ -20,18 +20,30 @@ function testImapConnection({ host, port, user, password, path }) {
       connTimeout: 15000,
     });
 
+    // Nasłuch błędów musi być stały (`.on`, nie `.once`) — inaczej spóźniony błąd
+    // po rozstrzygnięciu obietnicy (np. EPIPE przy zapisie do już zamkniętego
+    // socketu) nie miałby handlera i ubiłby cały proces Node.
     let settled = false;
-    const finish = (err) => {
-      if (settled) return;
+    const finish = (err, result) => {
+      if (settled) {
+        if (err) console.warn('[IMAP-test] Błąd połączenia po zakończeniu testu (zignorowany):', err.message);
+        return;
+      }
       settled = true;
       try { imap.end(); } catch {}
-      if (err) reject(err); else resolve();
+      if (err) reject(err); else resolve(result);
     };
 
     imap.once('ready', () => {
-      imap.openBox(path || 'INBOX', true, (err) => finish(err));
+      imap.openBox(path || 'INBOX', true, (err, box) => {
+        if (err) return finish(err);
+        imap.search(['UNSEEN'], (err, uids) => {
+          if (err) return finish(err);
+          finish(null, { total: box.messages.total, unseen: uids.length });
+        });
+      });
     });
-    imap.once('error', (err) => finish(err));
+    imap.on('error', (err) => finish(err));
 
     imap.connect();
   });

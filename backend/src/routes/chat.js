@@ -10,6 +10,7 @@ const { getSiteUrl } = require('../utils/siteUrl');
 const { classifyAndSave } = require('../utils/groqClassifier');
 const { sendWebhookEvent } = require('../utils/webhookClient');
 const { verifyChallenge } = require('../utils/mathCaptcha');
+const { logTicketEvent } = require('../utils/ticketLog');
 
 const MAX_MESSAGE_LENGTH = 4000;
 
@@ -105,6 +106,8 @@ router.post('/start', startLimiter, async (req, res) => {
        priority, deadlines.responseDeadline, deadlines.resolutionDeadline, req.ip]
     );
     const ticketId = result.insertId;
+
+    logTicketEvent(ticketId, { typ: 'created', meta: { source: 'chat' }, actorLabel: 'Czat na żywo' });
 
     await pool.query(
       'INSERT INTO zespol_has_ticket (zespol_id, ticket_id, created_at) VALUES (?, ?, ?)',

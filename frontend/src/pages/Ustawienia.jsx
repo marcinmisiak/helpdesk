@@ -1819,9 +1819,37 @@ export default function Ustawienia() {
                   <span className="block text-xs text-slate-400 font-normal">Wyślij email z numerem ticketu zaraz po jego zarejestrowaniu (email przychodzący i nowy ticket ręczny)</span>
                 </label>
               </div>
+              <div>
+                <label className="label">Maile systemowe (bez żadnej automatycznej korespondencji)</label>
+                <textarea
+                  value={effectiveForm.system_email_list || ''}
+                  onChange={set('system_email_list')}
+                  rows={3}
+                  className="input resize-y"
+                  placeholder="monitoring@przyklad.pl&#10;noreply@system.pl"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Jeden adres na linię. Zgłoszenia utworzone z tych adresów nigdy nie dostaną żadnej automatycznej wiadomości zwrotnej — ani potwierdzenia rejestracji, ani odpowiedzi pracownika, ani ankiety CSAT, ani przypomnienia o zamknięciu. Przeznaczone dla automatycznych skrzynek systemowych, nie prawdziwych zgłaszających.
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="csat_survey_enabled" checked={!!effectiveForm.csat_survey_enabled} onChange={setCheck('csat_survey_enabled')} />
                 <label htmlFor="csat_survey_enabled" className="text-sm">{t('settings.csat_enabled_label')}</label>
+              </div>
+              <div className="flex items-start gap-2 border-t pt-3 mt-1">
+                <input
+                  type="checkbox"
+                  id="ticket_log_enabled"
+                  className="mt-0.5"
+                  checked={effectiveForm.ticket_log_enabled !== undefined ? !!effectiveForm.ticket_log_enabled : true}
+                  onChange={setCheck('ticket_log_enabled')}
+                />
+                <label htmlFor="ticket_log_enabled" className="text-sm">
+                  {t('settings.ticket_log_enabled_label')}
+                  <span className="block text-xs text-slate-400 font-normal">
+                    {t('settings.ticket_log_enabled_hint')}
+                  </span>
+                </label>
               </div>
             </div>
           </div>

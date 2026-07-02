@@ -1,7 +1,7 @@
 'use strict';
 
 const pool = require('../config/db');
-const { sendNotification } = require('./mailer');
+const { sendNotification, isSystemSenderEmail } = require('./mailer');
 const { getSiteUrl } = require('./siteUrl');
 const { t: tr, resolveLang, getAppLang } = require('../i18n/index');
 
@@ -151,6 +151,11 @@ async function runCloseReminders(settings) {
 
   let sent = 0;
   for (const ticket of tickets) {
+    if (await isSystemSenderEmail(ticket.message_from)) {
+      await pool.query('UPDATE ticket SET close_reminder_sent_at = ? WHERE id = ?', [Math.floor(Date.now() / 1000), ticket.id]);
+      continue;
+    }
+
     let token = ticket.autor_token;
     if (!token) {
       token = crypto.randomUUID();

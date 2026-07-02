@@ -16,6 +16,7 @@ async function maybeSendCsatSurvey(ticketId) {
       [ticketId]
     );
     if (!ticket || !ticket.message_from || ticket.csat_sent_at) return;
+    if (await mailer.isSystemSenderEmail(ticket.message_from)) return;
 
     const token = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);

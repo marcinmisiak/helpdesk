@@ -4,6 +4,7 @@ const { notifyUsers } = require('./webpush');
 const { maybeSendCsatSurvey } = require('./csat');
 const messengerClient = require('./messengerClient');
 const { getSiteUrl } = require('./siteUrl');
+const { logTicketEvent } = require('./ticketLog');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -42,6 +43,8 @@ async function sendTicketReply(ticketId, {
      to, cc || '', ticket.message_subject, actorEmail, resolvedTyp]
   );
 
+  logTicketEvent(ticketId, { typ: 'replied', userId: actorUserId, actorLabel, meta: { to } });
+
   if (actorUserId) {
     const [existing] = await pool.query(
       'SELECT id FROM user_has_ticket WHERE ticket_id=? AND user_id=?',
@@ -69,6 +72,7 @@ async function sendTicketReply(ticketId, {
   if (close) {
     await pool.query('UPDATE ticket SET status=3, data_zamkniecia=?, odlozony=0 WHERE id=?', [now, ticketId]);
     maybeSendCsatSurvey(ticketId).catch(() => {});
+    logTicketEvent(ticketId, { typ: 'closed', userId: actorUserId, actorLabel, meta: { viaReply: true } });
   }
 
   const newStatus = close ? 3 : (oldStatus !== 3 ? 2 : 3);
@@ -98,6 +102,8 @@ async function sendTicketReply(ticketId, {
       mailError = msgErr.message;
       await pool.query('UPDATE korespondencja SET mail_error = ? WHERE id = ?', [msgErr.message, kResult.insertId]).catch(() => {});
     }
+  } else if (ticket.zrodlo !== 'live_chat' && await mailer.isSystemSenderEmail(ticket.message_from)) {
+    console.log(`[Mail] Pomijam wysyłkę do adresu systemowego: ${ticket.message_from}`);
   } else if (ticket.zrodlo !== 'live_chat') {
     try {
       const rawSubject = ticket.message_subject || '(brak tematu)';

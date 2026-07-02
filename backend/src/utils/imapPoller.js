@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const msGraph = require('./msGraphClient');
 const { getSiteUrl } = require('./siteUrl');
+const { logTicketEvent } = require('./ticketLog');
 
 const uploadDir = process.env.UPLOAD_DIR || '/var/www/html/pomoc/pliki';
 
@@ -287,9 +288,19 @@ async function findTicketBySenderAndSubject(from, subject) {
 // ─── Wspólna logika przetwarzania pojedynczej wiadomości ─────────────────────
 // channel (opcjonalnie) = { id, zespolId } gdy wiadomość przyszła ze skrzynki kanału
 // e-mail (kanal_czatu.typ='email'), null dla głównej skrzynki z ustawienia.
-async function processEmailItem({ from, to, subject, text, html, messageId, inReplyTo, references, attachments }, settings, channel = null) {
+async function processEmailItem({ from, to, subject, text, html, messageId, inReplyTo, references, attachments, date }, settings, channel = null) {
+  const { isSystemSenderEmail } = require('./mailer');
   let ticketId = null;
   let isForwardReply = false;
+
+  // Data z nagłówka Date/sentDateTime maila — kiedy nadawca faktycznie wysłał wiadomość,
+  // co przy zaległej poczcie (np. import zapleconych wiadomości) może być znacznie
+  // wcześniejsze niż moment, w którym poller ją pobrał. Przy braku/niepoprawnej dacie
+  // w nagłówku używamy czasu pobrania jako bezpiecznego fallbacku.
+  const parsedMsgDate = date ? new Date(date) : null;
+  const messageDateUnix = parsedMsgDate && !isNaN(parsedMsgDate.getTime())
+    ? Math.floor(parsedMsgDate.getTime() / 1000)
+    : Math.floor(Date.now() / 1000);
 
   if (inReplyTo || references.length) {
     const ids = [inReplyTo, ...references].filter(Boolean).map(id => id.replace(/[<>]/g, ''));
@@ -321,7 +332,14 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
     }
   }
 
-  if (!ticketId) {
+  // Pomijamy niepewne dopasowanie nadawca+temat dla "maili systemowych" (ustawienia.system_email_list,
+  // patrz utils/mailer.js#isSystemSenderEmail) — takie skrzynki (np. bramki SMS/monitoringu) potrafią
+  // wysyłać wiele niezależnych wiadomości z identycznym, szablonowym tematem i bez nagłówków
+  // In-Reply-To/References. Fallback po temacie łączyłby je wszystkie w jeden ticket (patrz ticket #5161:
+  // kilka powiadomień o różnych SMS-ach z tym samym tematem trafiło do jednego zgłoszenia). Dla tych
+  // nadawców liczy się wyłącznie prawdziwe dopasowanie (Message-ID albo numer ticketu w temacie) — bez
+  // niego każda wiadomość zawsze zakłada nowy ticket.
+  if (!ticketId && !(await isSystemSenderEmail(from))) {
     ticketId = await findTicketBySenderAndSubject(from, subject);
     if (ticketId) {
       console.log(`[IMAP] Dopasowano przez nadawcę+temat (fallback) → ticket #${ticketId}`);
@@ -343,10 +361,10 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
     const [kResult] = await pool.query(
       `INSERT INTO korespondencja
         (ticket_id, data, created_by, updated_by, created_at, updated_at,
-         tresc, html, message_to, message_cc, message_subject, message_from, message_id, typ)
-       VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         tresc, html, message_to, message_cc, message_subject, message_from, message_id, typ, message_date)
+       VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?))`,
       [ticketId, now, now, now, saveText, saveHtml || null, to, '', subject, from,
-       incomingMsgId, isForwardReply ? 'forward_reply' : 'received']
+       incomingMsgId, isForwardReply ? 'forward_reply' : 'received', messageDateUnix]
     );
     const cidMapK = await saveEmailAttachments(attachments, 2, kResult.insertId);
     if (saveHtml && Object.keys(cidMapK).length) {
@@ -354,6 +372,11 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
         [replaceCidReferences(saveHtml, cidMapK), kResult.insertId]);
     }
     await pool.query('UPDATE ticket SET podswietl = 1 WHERE id = ?', [ticketId]);
+    logTicketEvent(ticketId, {
+      typ: 'customer_reply',
+      actorLabel: 'Zgłaszający (e-mail)',
+      meta: { channel: 'email', forward: isForwardReply },
+    });
 
     const [reopen] = await pool.query(
       'UPDATE ticket SET status = 1, data_zamkniecia = NULL WHERE id = ? AND status = 3',
@@ -369,7 +392,7 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
         const [[ticket]] = await pool.query(
           'SELECT message_from, message_subject, numer FROM ticket WHERE id = ?', [ticketId]
         );
-        if (ticket?.message_from) {
+        if (ticket?.message_from && !(await isSystemSenderEmail(ticket.message_from))) {
           const replySubject = subject.startsWith('Re:') ? subject : `Re: ${ticket.message_subject}`;
           await sendReply({ to: ticket.message_from, subject: replySubject, html: html || null, tresc: text });
           console.log(`[IMAP] Przekazano odpowiedź do nadawcy zgłoszenia: ${ticket.message_from}`);
@@ -390,14 +413,32 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
     const numer = Math.random().toString().slice(2, 8);
     const [result] = await pool.query(
       `INSERT INTO ticket
-        (numer, message_from, message_to, message_subject, tresc, html, message_cc, status, data_utworzenia, odlozony, podswietl, message_id, zrodlo, kanal_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, 'email', ?)`,
-      [numer, from, to, subject, saveText, saveHtml || null, '', now, messageId.replace(/[<>]/g, ''), channel?.id || null]
+        (numer, message_from, message_to, message_subject, tresc, html, message_cc, status, data_utworzenia, odlozony, podswietl, message_id, zrodlo, kanal_id, message_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, 'email', ?, FROM_UNIXTIME(?))`,
+      [numer, from, to, subject, saveText, saveHtml || null, '', now, messageId.replace(/[<>]/g, ''), channel?.id || null, messageDateUnix]
     );
     const cidMapT = await saveEmailAttachments(attachments, 1, result.insertId);
     if (saveHtml && Object.keys(cidMapT).length) {
       await pool.query('UPDATE ticket SET html = ? WHERE id = ?',
         [replaceCidReferences(saveHtml, cidMapT), result.insertId]);
+    }
+
+    logTicketEvent(result.insertId, {
+      typ: 'created',
+      meta: { source: 'email' },
+      actorLabel: channel ? `Kanał e-mail: ${channel.nazwa}` : 'System (e-mail)',
+    });
+
+    // Kanał skonfigurowany do automatycznego zamykania (np. skrzynka archiwalna/powiadomieniowa,
+    // gdzie nikt nie musi ręcznie odpowiadać) — zamykamy od razu po utworzeniu, bez wysyłania
+    // maila "zgłoszenie zamknięte" do nadawcy i bez ankiety CSAT (nieadekwatne dla auto-importu).
+    if (channel?.autoClose) {
+      await pool.query('UPDATE ticket SET status = 3, data_zamkniecia = ? WHERE id = ?', [now, result.insertId]);
+      logTicketEvent(result.insertId, {
+        typ: 'closed',
+        meta: { viaAutoClose: true },
+        actorLabel: `Kanał e-mail: ${channel.nazwa}`,
+      });
     }
 
     // Status zostaje 1 (nowy) niezależnie od kanału — w przeciwieństwie do czatu/Messengera,
@@ -494,6 +535,7 @@ async function processEmails(emails, settings, channel = null) {
           inReplyTo: parsed.inReplyTo || '',
           references: parsed.references || [],
           attachments: parsed.attachments || [],
+          date: parsed.date || null,
         }, settings, channel);
       }
     } catch (e) {
@@ -561,6 +603,7 @@ async function processGraphMessages(messages, settings, channel = null) {
           inReplyTo,
           references,
           attachments,
+          date: msg.sentDateTime || null,
         }, settings, channel);
       }
     } catch (e) {
@@ -585,45 +628,95 @@ function fetchUnseen(settings) {
 
     const emails = [];
 
-    imap.once('ready', () => {
-      imap.openBox(settings.imapPath || 'INBOX', false, (err) => {
-        if (err) { imap.end(); return reject(err); }
+    // Serwer IMAP potrafi zgłosić błąd (np. zerwane połączenie) już PO tym, jak
+    // obietnica się rozstrzygnęła (np. spóźniony zapis do zamkniętego socketu —
+    // EPIPE). `.once('error', reject)` obsłużyłby tylko pierwszy taki błąd — każdy
+    // kolejny, bez nasłuchującego handlera, wywalałby cały proces Node (unhandled
+    // 'error' event). Dlatego nasłuchujemy stale (`.on`) i dodatkowe błędy po
+    // rozstrzygnięciu tylko logujemy.
+    let settled = false;
+    const settle = (fn, arg) => { if (settled) return; settled = true; clearTimeout(hangTimer); fn(arg); };
 
-        imap.search(['UNSEEN'], (err, uids) => {
-          if (err) { imap.end(); return reject(err); }
-          if (!uids.length) { imap.end(); return resolve([]); }
+    // Zabezpieczenie przed zawieszeniem: ten konkretny serwer (wseip.edu.pl) potrafi
+    // urwać połączenie w trakcie operacji tak, że NIE emituje ani 'error', ani 'end' —
+    // obietnica wisiałaby wtedy w nieskończoność, blokując przetwarzanie tego kanału
+    // (i pośrednio kolejne cykle pollera, bo setInterval i tak odpala poll() co 60s
+    // niezależnie od tego, czy poprzednie wywołanie się zakończyło). Po 30s wymuszamy
+    // odrzucenie i zamykamy socket.
+    const hangTimer = setTimeout(() => {
+      console.warn('[IMAP] Timeout (30s) — serwer nie odpowiedział do końca operacji, zrywam połączenie');
+      try { imap.destroy(); } catch {}
+      settle(reject, new Error('Timeout — serwer nie odpowiedział do końca operacji'));
+    }, 30000);
+
+    const dbg = (...args) => console.log('[IMAP-debug]', settings.imapLogin, ...args);
+
+    imap.once('ready', () => {
+      dbg('ready');
+      imap.openBox(settings.imapPath || 'INBOX', false, (err) => {
+        if (err) { dbg('openBox error', err.message); imap.end(); return settle(reject, err); }
+        dbg('openBox ok');
+
+        imap.search(settings.fetchSeen ? ['ALL'] : ['UNSEEN'], (err, uids) => {
+          if (err) { dbg('search error', err.message); imap.end(); return settle(reject, err); }
+          dbg('search ok, uids=', uids);
+          if (!uids.length) { imap.end(); return settle(resolve, []); }
 
           const fetch = imap.fetch(uids, { bodies: '', markSeen: true });
 
-          fetch.on('message', (msg) => {
+          fetch.on('message', (msg, seqno) => {
+            dbg('message start, seqno=', seqno);
             let raw = '';
             msg.on('body', (stream) => {
               stream.on('data', (chunk) => { raw += chunk.toString(); });
             });
-            msg.once('end', () => { emails.push(raw); });
+            msg.once('end', () => { emails.push(raw); dbg('message end, seqno=', seqno, 'bytes=', raw.length, 'emails.length=', emails.length); });
           });
 
-          fetch.once('error', (e) => { imap.end(); reject(e); });
+          fetch.once('error', (e) => { dbg('fetch error', e.message); imap.end(); settle(reject, e); });
           fetch.once('end', () => {
-            if (settings.clean_mailbox) {
+            dbg('fetch end, emails.length=', emails.length, 'uids.length=', uids.length);
+            // Usuwamy tylko wtedy, gdy faktycznie udało się odebrać treść KAŻDEJ
+            // wiadomości znalezionej przez SEARCH (emails.length === uids.length).
+            // `fetch.once('end')` potrafi odpalić się nawet gdy strumień treści
+            // części wiadomości się urwał (np. niestabilne połączenie) — usuwanie
+            // po samych `uids` z SEARCH, bez tej weryfikacji, kasowało wiadomości
+            // z serwera, mimo że ich treść nigdy nie trafiła do `emails` i nigdy
+            // nie powstał z nich ticket (bezpowrotna utrata danych).
+            if (settings.clean_mailbox && emails.length === uids.length) {
               imap.addFlags(uids, '\\Deleted', (err) => {
                 if (err) console.warn('[IMAP] Błąd oznaczania do usunięcia:', err.message);
                 imap.expunge((err) => {
                   if (err) console.warn('[IMAP] Błąd expunge:', err.message);
                   else console.log(`[IMAP] Usunięto ${uids.length} wiadomości ze skrzynki`);
+                  dbg('calling imap.end() after delete, emails.length=', emails.length);
                   imap.end();
+                  // Nie czekamy na zdarzenie 'end' (potwierdzenie zamknięcia połączenia) —
+                  // ten konkretny serwer potrafi nigdy go nie wysłać, mimo że LOGOUT po jego
+                  // stronie przebiegł czysto (widoczne w jego logach). Dane już mamy, więc
+                  // oddajemy je od razu; ewentualne późniejsze 'end'/'error' trafi w settled=true.
+                  settle(resolve, emails);
                 });
               });
             } else {
+              if (settings.clean_mailbox) {
+                console.warn(`[IMAP] Pominięto usuwanie — odebrano treść ${emails.length}/${uids.length} wiadomości (niepełny fetch, nic nie usunięto)`);
+              }
+              dbg('calling imap.end(), no delete, emails.length=', emails.length);
               imap.end();
+              settle(resolve, emails);
             }
           });
         });
       });
     });
 
-    imap.once('end', () => resolve(emails));
-    imap.once('error', reject);
+    imap.once('end', () => { dbg('imap end event, settling resolve with emails.length=', emails.length); settle(resolve, emails); });
+    imap.on('error', (err) => {
+      dbg('imap error event, settled=', settled, 'msg=', err.message);
+      if (settled) { console.warn('[IMAP] Błąd połączenia po zakończeniu operacji (zignorowany):', err.message); return; }
+      settle(reject, err);
+    });
     imap.connect();
   });
 }
@@ -642,31 +735,39 @@ function cleanOldImapMessages(settings, days) {
       connTimeout: 15000,
     });
 
+    // Patrz komentarz w fetchUnseen() — nasłuch błędów musi być stały (`.on`), nie
+    // `.once`, żeby spóźniony błąd po rozstrzygnięciu obietnicy nie ubił procesu.
+    let settled = false;
+    const settle = () => { if (settled) return; settled = true; resolve(); };
+
     imap.once('ready', () => {
       imap.openBox(settings.imapPath || 'INBOX', false, (err) => {
-        if (err) { imap.end(); return resolve(); }
+        if (err) { imap.end(); return settle(); }
 
         const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000);
         const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const imapDate = `${String(cutoff.getDate()).padStart(2,'0')}-${months[cutoff.getMonth()]}-${cutoff.getFullYear()}`;
 
         imap.search([['BEFORE', imapDate]], (err, uids) => {
-          if (err || !uids.length) { imap.end(); return resolve(); }
+          if (err || !uids.length) { imap.end(); return settle(); }
 
           imap.addFlags(uids, '\\Deleted', (err) => {
-            if (err) { imap.end(); return resolve(); }
+            if (err) { imap.end(); return settle(); }
             imap.expunge((err) => {
               if (!err) console.log(`[IMAP] Usunięto ${uids.length} wiadomości starszych niż ${days} dni`);
               imap.end();
-              resolve();
+              settle();
             });
           });
         });
       });
     });
 
-    imap.once('error', () => resolve());
-    imap.once('end', () => resolve());
+    imap.on('error', (err) => {
+      if (settled) { console.warn('[IMAP] Błąd połączenia po zakończeniu operacji (zignorowany):', err.message); return; }
+      settle();
+    });
+    imap.once('end', () => settle());
     imap.connect();
   });
 }
@@ -690,12 +791,13 @@ async function cleanOldGraphMessages(settings, days) {
 // błąd jednego kanału (np. złe dane logowania) nie przerywa innych ani głównej skrzynki.
 async function pollEmailChannels(globalSettings) {
   const [channels] = await pool.query(
-    `SELECT id, zespol_id, notification_email, imap_server, imap_port, imap_login, imap_password, imap_path,
+    `SELECT id, nazwa, zespol_id, notification_email, imap_server, imap_port, imap_login, imap_password, imap_path,
+            imap_delete_after_fetch, imap_fetch_seen, auto_close_ticket,
             ms_graph_enabled, ms_graph_mailbox
      FROM kanal_czatu WHERE typ = 'email' AND aktywny = 1`
   );
   for (const ch of channels) {
-    const channel = { id: ch.id, zespolId: ch.zespol_id, notificationEmail: ch.notification_email };
+    const channel = { id: ch.id, nazwa: ch.nazwa, zespolId: ch.zespol_id, notificationEmail: ch.notification_email, autoClose: !!ch.auto_close_ticket };
 
     if (ch.ms_graph_enabled) {
       // Skrzynka Microsoft 365 — używa współdzielonej aplikacji Azure skonfigurowanej
@@ -733,6 +835,15 @@ async function pollEmailChannels(globalSettings) {
       imapPath: ch.imap_path,
       senderEmail: ch.imap_login,
       strip_quoted_reply: globalSettings?.strip_quoted_reply,
+      // clean_mailbox reużywa istniejącego mechanizmu z fetchUnseen() (używanego też
+      // dla głównej skrzynki) — usuwa pobrane wiadomości z serwera po przetworzeniu.
+      clean_mailbox: !!ch.imap_delete_after_fetch,
+      // fetchSeen: szuka wszystkich wiadomości (ALL), nie tylko UNSEEN — potrzebne,
+      // gdy skrzynka ma wiadomości oznaczone jako przeczytane zanim kanał zaczął
+      // odpytywanie (np. ktoś zajrzał do niej przez webmail przed konfiguracją).
+      // Bez clean_mailbox=true te same przeczytane wiadomości będą pobierane w kółko
+      // przy każdym cyklu — pole ostrzega o tym w UI.
+      fetchSeen: !!ch.imap_fetch_seen,
     };
     try {
       const emails = await fetchUnseen(channelSettings);

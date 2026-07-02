@@ -10,6 +10,26 @@ async function getSettings() {
   return s;
 }
 
+function extractPlainEmail(text) {
+  const m = (text || '').match(/<([^>]+)>/);
+  return (m ? m[1] : (text || '')).trim().toLowerCase();
+}
+
+// ─── isSystemSenderEmail — "maile systemowe" (ustawienia.system_email_list, jeden
+// adres na linię) — od tych nadawców (np. automatyczne skrzynki monitoringu) nigdy
+// nie wysyłamy żadnej korespondencji zwrotnej: ani potwierdzenia rejestracji, ani
+// odpowiedzi pracownika, ani ankiety CSAT, ani przypomnienia o zamknięciu.
+async function isSystemSenderEmail(rawEmail) {
+  const email = extractPlainEmail(rawEmail);
+  if (!email) return false;
+  const [[settings]] = await pool.query('SELECT system_email_list FROM ustawienia WHERE id = 1');
+  const list = (settings?.system_email_list || '')
+    .split(/\r?\n/)
+    .map((e) => extractPlainEmail(e))
+    .filter(Boolean);
+  return list.includes(email);
+}
+
 async function getTransport(settings) {
   if (!settings.host) throw new Error('Brak skonfigurowanego serwera SMTP');
   if (!settings.username) throw new Error('Brak loginu SMTP');
@@ -473,6 +493,7 @@ async function sendTicketRegisteredEmail({ numer, from, subject, kategoriaNazwa 
       'SELECT powiadom_rejestracja FROM ustawienia WHERE id = 1'
     );
     if (!settings?.powiadom_rejestracja) return;
+    if (await isSystemSenderEmail(from)) return;
 
     const lang = await getAppLang(pool);
     const appName = await getAppName();
@@ -514,4 +535,4 @@ async function sendTicketRegisteredEmail({ numer, from, subject, kategoriaNazwa 
   }
 }
 
-module.exports = { sendReply, sendNotification, sendForward, formalTemplate, getSenderInfo, getAppName, notifyAdminsNewTicket, sendTicketRegisteredEmail, sendSurvey };
+module.exports = { sendReply, sendNotification, sendForward, formalTemplate, getSenderInfo, getAppName, notifyAdminsNewTicket, sendTicketRegisteredEmail, sendSurvey, isSystemSenderEmail };

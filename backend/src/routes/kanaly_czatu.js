@@ -30,6 +30,7 @@ router.post('/', requireAdmin, async (req, res) => {
   const {
     nazwa, zespol_id, typ, dozwolone_domeny, powitanie, notification_email,
     imap_server, imap_port, imap_login, imap_password, imap_path,
+    imap_delete_after_fetch, imap_fetch_seen, auto_close_ticket,
     ms_graph_enabled, ms_graph_mailbox,
   } = req.body;
   if (!nazwa?.trim()) return res.status(400).json({ error: 'Nazwa kanału jest wymagana' });
@@ -43,11 +44,13 @@ router.post('/', requireAdmin, async (req, res) => {
       `INSERT INTO kanal_czatu
          (channel_key, nazwa, zespol_id, typ, dozwolone_domeny, powitanie, notification_email,
           imap_server, imap_port, imap_login, imap_password, imap_path,
+          imap_delete_after_fetch, imap_fetch_seen, auto_close_ticket,
           ms_graph_enabled, ms_graph_mailbox, aktywny, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       [channelKey, nazwa.trim(), zespol_id, typ || 'chat', dozwolone_domeny?.trim() || null, powitanie?.trim() || null,
        notification_email?.trim() || null,
        imap_server?.trim() || null, imap_port || null, imap_login?.trim() || null, imap_password || null, imap_path?.trim() || null,
+       imap_delete_after_fetch ? 1 : 0, imap_fetch_seen ? 1 : 0, auto_close_ticket ? 1 : 0,
        ms_graph_enabled ? 1 : 0, ms_graph_mailbox?.trim() || null,
        now, now]
     );
@@ -62,6 +65,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
   const {
     nazwa, zespol_id, typ, dozwolone_domeny, powitanie, aktywny, notification_email,
     imap_server, imap_port, imap_login, imap_password, imap_path,
+    imap_delete_after_fetch, imap_fetch_seen, auto_close_ticket,
     ms_graph_enabled, ms_graph_mailbox,
   } = req.body;
   if (nazwa !== undefined && !nazwa?.trim()) {
@@ -88,6 +92,9 @@ router.put('/:id', requireAdmin, async (req, res) => {
     // go, jeśli admin nie wpisał nowej wartości (GET nigdy nie zwraca prawdziwego hasła).
     if (imap_password) { updates.push('imap_password = ?'); values.push(imap_password); }
     if (imap_path !== undefined) { updates.push('imap_path = ?'); values.push(imap_path?.trim() || null); }
+    if (imap_delete_after_fetch !== undefined) { updates.push('imap_delete_after_fetch = ?'); values.push(imap_delete_after_fetch ? 1 : 0); }
+    if (imap_fetch_seen !== undefined) { updates.push('imap_fetch_seen = ?'); values.push(imap_fetch_seen ? 1 : 0); }
+    if (auto_close_ticket !== undefined) { updates.push('auto_close_ticket = ?'); values.push(auto_close_ticket ? 1 : 0); }
     if (ms_graph_enabled !== undefined) { updates.push('ms_graph_enabled = ?'); values.push(ms_graph_enabled ? 1 : 0); }
     if (ms_graph_mailbox !== undefined) { updates.push('ms_graph_mailbox = ?'); values.push(ms_graph_mailbox?.trim() || null); }
 
@@ -116,14 +123,19 @@ router.post('/imap-test', requireAdmin, async (req, res) => {
       password = row?.imap_password || null;
     }
 
-    await testImapConnection({
+    const { total, unseen } = await testImapConnection({
       host: imap_server.trim(),
       port: imap_port || null,
       user: imap_login.trim(),
       password,
       path: imap_path?.trim() || null,
     });
-    res.json({ success: true, message: 'Połączenie z serwerem IMAP nawiązane pomyślnie.' });
+    res.json({
+      success: true,
+      message: `Połączenie OK. Wiadomości w skrzynce: ${total}, nieprzeczytanych: ${unseen}.`,
+      total,
+      unseen,
+    });
   } catch (err) {
     res.status(400).json({ success: false, error: `Błąd IMAP: ${err.message}` });
   }

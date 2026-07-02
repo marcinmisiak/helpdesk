@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -134,6 +134,7 @@ function BulkCategoryModal({ count, kategorie, onClose, onApply }) {
 
 export default function TicketList({ title, queryParams = {} }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const locale = useDateLocale();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selected, setSelected] = useState([]);
@@ -384,7 +385,7 @@ export default function TicketList({ title, queryParams = {} }) {
         <div className="card mb-4 p-4">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <div>
-              <label className="label">{t('ticket_list.filter_status')}</label>
+              <label className="label">{t('ticket_list.filter_search')}</label>
               <input
                 type="text"
                 value={draftFilters.q}
@@ -402,6 +403,7 @@ export default function TicketList({ title, queryParams = {} }) {
                 className="input"
               >
                 <option value="">{t('ticket_list.all_active')}</option>
+                <option value="all">{t('ticket_list.status_none')}</option>
                 <option value="1">{t('ticket_list.status_new')}</option>
                 <option value="2">{t('ticket_list.status_assigned')}</option>
                 <option value="3">{t('ticket_list.status_closed')}</option>
@@ -465,7 +467,9 @@ export default function TicketList({ title, queryParams = {} }) {
       {activeFilterCount > 0 && !showFilters && (
         <div className="flex flex-wrap gap-2 mb-3 text-xs">
           {filters.status && (
-            <span className="badge-blue">{t('ticket_list.filter_label_status')}: {STATUS_LABELS[filters.status]}</span>
+            <span className="badge-blue">
+              {t('ticket_list.filter_label_status')}: {filters.status === 'all' ? t('ticket_list.status_none') : STATUS_LABELS[filters.status]}
+            </span>
           )}
           {filters.priority && (
             <span className="badge-blue">{t('ticket_list.filter_label_priority')}: {PRIORITY_LABELS[filters.priority]}</span>
@@ -508,17 +512,20 @@ export default function TicketList({ title, queryParams = {} }) {
                 </tr>
               </thead>
               <tbody className="divide-y dark:divide-gray-800">
-                {tickets.map(ticket => (
+                {tickets.map(ticket => {
+                  const href = CHAT_ZRODLA.includes(ticket.zrodlo) ? `/czaty/${ticket.id}` : `/tickets/${ticket.id}`;
+                  return (
                   <tr
                     key={ticket.id}
-                    className={`hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+                    onClick={() => navigate(href)}
+                    className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
                       ticket.podswietl
                         ? 'bg-orange-50 dark:bg-orange-900/20 border-l-4 border-l-orange-400 dark:border-l-orange-500'
                         : 'border-l-4 border-l-transparent'
                     }`}
                   >
                     {isAdmin && (
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selected.includes(ticket.id)}
@@ -538,7 +545,8 @@ export default function TicketList({ title, queryParams = {} }) {
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Link
-                          to={CHAT_ZRODLA.includes(ticket.zrodlo) ? `/czaty/${ticket.id}` : `/tickets/${ticket.id}`}
+                          to={href}
+                          onClick={(e) => e.stopPropagation()}
                           className={`hover:underline dark:text-blue-300 ${
                             ticket.podswietl
                               ? 'text-orange-700 dark:text-orange-300 font-semibold'
@@ -588,7 +596,8 @@ export default function TicketList({ title, queryParams = {} }) {
                       <AITagBadge tag={ticket.ai_tag} reason={ticket.ai_reason} />
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

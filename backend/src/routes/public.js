@@ -20,6 +20,7 @@ const {
   maskEmail, isOtpEnabled, secondsSinceLastCode, isStaffSession,
   RESEND_COOLDOWN_SECONDS,
 } = require('../utils/statusOtp');
+const { logTicketEvent } = require('../utils/ticketLog');
 
 // Dodatkowa autoryzacja kodem e-mail na stronie statusu — autor_token z linku już jest
 // tajny, ale to drugi czynnik (musi też mieć dostęp do swojej skrzynki). Sterowane
@@ -232,6 +233,8 @@ router.post('/zgloszenie', submitLimiter, (req, res, next) => {
     );
 
     const ticketId = result.insertId;
+
+    logTicketEvent(ticketId, { typ: 'created', meta: { source: 'web_form' }, actorLabel: 'Formularz publiczny' });
 
     // Zapisz załączniki
     for (const file of (req.files || [])) {
@@ -515,6 +518,12 @@ router.post('/status/:token/odpowiedz', replyLimiter, async (req, res) => {
       ]
     );
 
+    logTicketEvent(ticket.id, {
+      typ: 'customer_reply',
+      meta: { channel: 'web_form' },
+      actorLabel: 'Zgłaszający (strona statusu)',
+    });
+
     // Powiadom przypisanych pracowników emailem (pomijaj tych, którzy są online)
     try {
       const ONLINE_THRESHOLD = 3 * 60;
@@ -575,6 +584,7 @@ router.post('/status/:token/zamknij', replyLimiter, async (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     await pool.query('UPDATE ticket SET status=3, data_zamkniecia=? WHERE id=?', [now, ticket.id]);
     maybeSendCsatSurvey(ticket.id).catch(() => {});
+    logTicketEvent(ticket.id, { typ: 'customer_closed', actorLabel: 'Zgłaszający' });
 
     // Powiadom przypisanych pracowników
     try {

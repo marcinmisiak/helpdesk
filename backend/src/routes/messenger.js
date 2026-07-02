@@ -7,6 +7,7 @@ const { normalizePriority, computeDeadlines } = require('../utils/sla');
 const { classifyAndSave } = require('../utils/groqClassifier');
 const messengerClient = require('../utils/messengerClient');
 const { sendWebhookEvent } = require('../utils/webhookClient');
+const { logTicketEvent } = require('../utils/ticketLog');
 
 function escapeHtml(s) {
   return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -100,6 +101,8 @@ async function handleIncomingMessage(settings, evt) {
     [numer, displayName, fullText, now, psid, now, priority, deadlines.responseDeadline, deadlines.resolutionDeadline]
   );
   const ticketId = result.insertId;
+
+  logTicketEvent(ticketId, { typ: 'created', meta: { source: 'messenger' }, actorLabel: 'Messenger' });
 
   if (settings.messenger_zespol_id) {
     await pool.query('INSERT INTO zespol_has_ticket (zespol_id, ticket_id, created_at) VALUES (?, ?, ?)', [settings.messenger_zespol_id, ticketId, now]);
