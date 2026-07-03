@@ -581,7 +581,7 @@ export default function TicketView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isKierownik, user } = useAuth();
 
   const [modal, setModal] = useState(null);
 
@@ -864,6 +864,15 @@ export default function TicketView() {
           <div><dt className="label">{t('ticket_view.field_from')}</dt><dd className="text-gray-700 dark:text-gray-200">{ticket.message_from}</dd></div>
           <div><dt className="label">{t('ticket_view.field_to')}</dt><dd className="text-gray-700 dark:text-gray-200">{ticket.message_to}</dd></div>
           <div><dt className="label">{t('ticket_view.field_priority')}</dt><dd className="text-gray-700 dark:text-gray-200">{PRIORITY_LABELS[ticket.priority] || 'P2'}</dd></div>
+          {ticket.csat_rating != null && (isAdmin || isKierownik || ticket.csat_pokazany_user_id === user?.id) && (
+            <div>
+              <dt className="label">{t('ticket_view.field_csat')}</dt>
+              <dd className="text-yellow-500" title={`${ticket.csat_rating}/5`}>
+                {'★'.repeat(ticket.csat_rating)}<span className="text-gray-300 dark:text-gray-600">{'★'.repeat(5 - ticket.csat_rating)}</span>
+                {ticket.csat_comment && <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5 normal-case">{ticket.csat_comment}</span>}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="label">{t('ticket_view.field_sla_status')}</dt>
             <dd className="text-gray-700 dark:text-gray-200">

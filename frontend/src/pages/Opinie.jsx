@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import useDateLocale from '../i18n/useDateLocale';
 import api from '../api/client';
+import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
 function Stars({ rating }) {
@@ -15,14 +16,72 @@ function Stars({ rating }) {
   );
 }
 
+function ShowToWorkerModal({ opinia, onClose, onSuccess }) {
+  const { t } = useTranslation();
+  const [userId, setUserId] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const { data: repliers, isLoading } = useQuery({
+    queryKey: ['opinie-repliers', opinia.id],
+    queryFn: () => api.get(`/opinie/${opinia.id}/repliers`).then(r => r.data.data),
+  });
+
+  const confirm = async () => {
+    if (!userId) return;
+    setSending(true);
+    try {
+      await api.post(`/opinie/${opinia.id}/pokaz`, { user_id: userId });
+      toast.success(t('opinie.shown_success'));
+      onSuccess();
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('opinie.shown_error'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm border dark:border-gray-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-800">
+          <h3 className="font-semibold">{t('opinie.show_modal_title')}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">×</button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">{t('opinie.show_modal_hint')}</p>
+          {isLoading ? (
+            <div className="text-sm text-gray-400">{t('opinie.loading')}</div>
+          ) : repliers?.length ? (
+            <select value={userId} onChange={e => setUserId(e.target.value)} className="input">
+              <option value="">{t('opinie.show_modal_choose')}</option>
+              {repliers.map(u => <option key={u.id} value={u.id}>{u.imie} {u.nazwisko}</option>)}
+            </select>
+          ) : (
+            <p className="text-sm text-gray-400">{t('opinie.show_modal_empty')}</p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t dark:border-gray-800">
+          <button onClick={onClose} className="btn-secondary">{t('opinie.show_modal_cancel')}</button>
+          <button onClick={confirm} disabled={!userId || sending} className="btn-primary disabled:opacity-50">
+            {t('opinie.show_modal_confirm')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Opinie() {
   const { t } = useTranslation();
   const locale = useDateLocale();
   const { isAdmin, kierownikZespolIds } = useAuth();
+  const qc = useQueryClient();
   const [selectedZespolId, setSelectedZespolId] = useState(
     !isAdmin && kierownikZespolIds.length ? kierownikZespolIds[0] : ''
   );
   const [page, setPage] = useState(1);
+  const [modalOpinia, setModalOpinia] = useState(null);
   const limit = 50;
 
   const formatDate = (ts) => {
@@ -44,7 +103,12 @@ export default function Opinie() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['opinie', zespolId, page],
-    queryFn: () => api.get('/opinie', { params: { page, limit, ...(zespolId ? { zespol_id: zespolId } : {}) } }).then((r) => r.data),
+    queryFn: () => api.get('/opinie', { params: { page, limit, ...(zespolId ? { zespol_id: zespolId } : {}) } }).then((r) => {
+      // Otwarcie listy oznacza pokazane opinie jako przeczytane po stronie backendu —
+      // odśwież licznik w pasku bocznym, żeby zniknął od razu, bez czekania na kolejny poll.
+      qc.invalidateQueries(['counts']);
+      return r.data;
+    }),
   });
 
   if (isError) return <Navigate to="/moje" replace />;
@@ -86,18 +150,31 @@ export default function Opinie() {
                   <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('opinie.col_ocena')}</th>
                   <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('opinie.col_komentarz')}</th>
                   <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('opinie.col_data')}</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('opinie.col_actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y dark:divide-gray-800">
                 {opinie.map((o) => (
-                  <tr key={o.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <tr key={o.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${!o.csat_przeczytane ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}`}>
                     <td className="px-3 py-2 whitespace-nowrap">
+                      {!o.csat_przeczytane && <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1.5" />}
                       <Link to={`/tickets/${o.id}`} className="text-blue-600 dark:text-blue-300 hover:underline">#{o.numer}</Link>
                     </td>
                     <td className="px-3 py-2 max-w-[280px] truncate">{o.message_subject || '—'}</td>
                     <td className="px-3 py-2"><Stars rating={o.csat_rating} /></td>
                     <td className="px-3 py-2 max-w-[320px] truncate" title={o.csat_comment}>{o.csat_comment || '—'}</td>
                     <td className="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{formatDate(o.csat_submitted_at)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {o.csat_pokazany_user_id ? (
+                        <span className="text-xs text-gray-400">
+                          {t('opinie.shown_already', { name: `${o.csat_pokazany_imie} ${o.csat_pokazany_nazwisko}` })}
+                        </span>
+                      ) : (
+                        <button onClick={() => setModalOpinia(o)} className="text-xs text-blue-600 dark:text-blue-300 hover:underline">
+                          {t('opinie.show_to_worker')}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -114,6 +191,14 @@ export default function Opinie() {
             </div>
           )}
         </>
+      )}
+
+      {modalOpinia && (
+        <ShowToWorkerModal
+          opinia={modalOpinia}
+          onClose={() => setModalOpinia(null)}
+          onSuccess={() => qc.invalidateQueries(['opinie'])}
+        />
       )}
     </div>
   );

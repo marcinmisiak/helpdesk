@@ -30,10 +30,17 @@ Każde zgłoszenie ma jeden z trzech statusów:
 
 ## Priorytety
 
-- **Niski** — sprawa niewymagająca natychmiastowej reakcji
-- **Normalny** — standardowe zgłoszenie
-- **Wysoki** — pilna sprawa wymagająca szybkiej reakcji
-- **Krytyczny** — awaria lub blokada pracy
+System rozróżnia trzy poziomy priorytetu, każdy z własnymi terminami SLA (czas do pierwszej reakcji / czas do rozwiązania):
+
+| Priorytet | Termin reakcji | Termin rozwiązania |
+|-----------|----------------|---------------------|
+| **P1 – Krytyczny** | 1 godzina | 8 godzin |
+| **P2 – Normalny** (domyślny) | 4 godziny | 24 godziny |
+| **P3 – Niski** | 8 godzin | 48 godzin |
+
+Dla zgłoszeń przychodzących e-mailem, przez formularz WWW lub czat priorytet ustawia automatycznie klasyfikator AI na podstawie treści wiadomości. Przy ręcznym tworzeniu zgłoszenia w panelu administrator wybiera priorytet samodzielnie z listy rozwijanej — domyślnie ustawiony jest P2.
+
+Odliczanie terminów SLA widoczne jest na stronie zgłoszenia oraz w sekcji **Statystyki** (patrz rozdział *Statystyki i opinie*).
 
 ## Załączniki
 

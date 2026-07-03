@@ -14,6 +14,8 @@ Odłożenie to zawieszenie pracy nad zgłoszeniem do określonej daty. Sprawa po
 4. Opcjonalnie dodaj powód odłożenia
 5. Potwierdź
 
+Zgłaszający automatycznie otrzyma e-mail z informacją, że zespół potrzebuje więcej czasu na odpowiedź i prosi o cierpliwość — nie trzeba wysyłać tego komunikatu ręcznie.
+
 ## Przeglądanie odłożonych zgłoszeń
 
 W menu bocznym znajdziesz sekcję **Odłożone** z liczbą aktualnie odłożonych spraw. Kliknięcie przenosi do listy wszystkich odłożonych zgłoszeń z datami powrotu.

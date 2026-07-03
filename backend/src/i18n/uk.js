@@ -91,4 +91,8 @@ module.exports = {
   subject_satisfaction_survey: '[{appName}] Оцініть обробку заявки #{numer}',
   survey_intro: 'Вашу заявку <strong>#{numer}</strong> закрито. Просимо приділити хвилину часу та оцінити якість нашої підтримки.',
   btn_rate_survey: 'Оцінити підтримку',
+
+  // Заявку відкладено — сповіщення для заявника
+  subject_ticket_deferred: 'Оновлення заявки #{numer} — нам потрібно більше часу',
+  ticket_deferred_intro: 'Нашій команді потрібно більше часу, щоб відповісти на Ваше питання в заявці <strong>#{numer}</strong>. Просимо про терпіння.',
 };

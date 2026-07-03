@@ -68,7 +68,7 @@ export function toggleSoundMute() {
   return next;
 }
 
-export default function useNewTicketAlert(counts, { isAdmin, onNewTicket, onNewReply, onAssigned, onUserOnline, onUserOffline } = {}) {
+export default function useNewTicketAlert(counts, { isAdmin, onNewTicket, onNewReply, onAssigned, onUserOnline, onUserOffline, onCsatShared, notifyActivity = true } = {}) {
   const prevRef = useRef(null);
 
   useEffect(() => {
@@ -109,8 +109,15 @@ export default function useNewTicketAlert(counts, { isAdmin, onNewTicket, onNewR
       onAssigned?.(counts.last_assigned_ticket_id);
     }
 
-    // Zmiany obecności użytkowników
-    if (counts.online_users && prev.online_users) {
+    // Kierownik udostępnił mi opinię (CSAT) zgłoszenia, na które odpowiadałem
+    if ((counts.last_csat_shared_at || 0) > (prev.last_csat_shared_at || 0)) {
+      playOnce();
+      onCsatShared?.(counts.last_csat_shared_ticket_id);
+    }
+
+    // Zmiany obecności użytkowników — pomijane całkowicie (bez dźwięku i bez callbacku),
+    // gdy administrator wyłączył "Powiadamiaj o aktywności użytkowników" w Ustawieniach.
+    if (counts.online_users && prev.online_users && notifyActivity) {
       const prevIds = new Set(prev.online_users.map(u => u.id));
       const currIds = new Set(counts.online_users.map(u => u.id));
       for (const u of counts.online_users) {

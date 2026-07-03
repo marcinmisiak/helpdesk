@@ -19,16 +19,30 @@ After logging in, you will find the navigation menu (sidebar) on the left side o
 | Section | Description |
 |---------|-------------|
 | **My tickets** | Your active and closed requests |
+| **Chats** | Live chat and Messenger conversations |
 | **Deferred** | Tickets postponed for later |
 | **Calendar** | A calendar view of deadlines |
+| **Teams** | Teams you belong to or can join |
+| **Reply Templates** | Ready-made reply content — global and team-specific |
+| **Spam** | Tickets marked as spam |
+| **Statistics** | SLA, CSAT, and team workload metrics — team managers and administrators only |
+| **Opinions** | List of satisfaction ratings submitted by requesters — team managers and administrators only |
 | **Help** | This user guide |
 
 ## User Panel
 
-At the top of the sidebar you will see your initials, full name, and role in the system. Below are counters:
+At the top of the sidebar you will see your initials, full name, and role in the system. Below are three counters, which differ for administrators and workers:
 
-- **Mine** — number of active tickets assigned to you
-- **Deferred** — number of deferred tickets
+- **Administrator** — number of **new** tickets, number **in progress**, and number of **mine** (assigned to me)
+- **Worker** — number of **team** tickets (not yet assigned to anyone in my team), number of **mine**, and number of **deferred** tickets
+
+## Avatar
+
+Click your avatar at the top of the sidebar to upload your own profile picture. If you don't upload one, the system shows a default avatar with your initials.
+
+## Interface Language
+
+The **PL / EN** buttons at the bottom of the sidebar switch the language of the entire application interface (menus, buttons, messages). Your choice is saved in the browser. This setting is independent of the public ticket form's language, which additionally supports Ukrainian (see the *Submitting Requests and Communication* chapter).
 
 ## Dark and Light Mode
 

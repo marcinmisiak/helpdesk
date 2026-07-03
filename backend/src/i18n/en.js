@@ -91,4 +91,8 @@ module.exports = {
   subject_satisfaction_survey: '[{appName}] Rate the support for ticket #{numer}',
   survey_intro: 'Your ticket <strong>#{numer}</strong> has been closed. We would appreciate a moment of your time to rate the quality of our support.',
   btn_rate_survey: 'Rate the support',
+
+  // Ticket deferred — notification to the requester
+  subject_ticket_deferred: 'Update on ticket #{numer} — we need more time',
+  ticket_deferred_intro: 'Our team needs more time to respond to your question in ticket <strong>#{numer}</strong>. We appreciate your patience.',
 };

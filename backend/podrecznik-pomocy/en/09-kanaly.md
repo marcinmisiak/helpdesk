@@ -65,3 +65,11 @@ For IMAP connections, a **Test connection** button is available to verify the lo
 ## Editing and Deleting a Channel
 
 The channel list can be searched by name. Each channel has **Edit** and **Delete** actions — deleting a channel does not delete the tickets already created from it; they remain in the system exactly as before, the channel simply stops existing and stops receiving new mail/chats.
+
+---
+
+## Replying on Chat and Messenger
+
+Live chat and Messenger tickets have a dedicated conversation view (the **Chats** section in the sidebar) — message bubbles instead of the classic email-style form, like a messaging app.
+
+The reply field takes up a large part of the screen so you can comfortably write longer messages. **Enter moves to a new line — it does not send the message.** To send your reply, click the **Send** button.

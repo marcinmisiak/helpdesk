@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-const { authenticate, requireWorker } = require('../middleware/auth');
+const { authenticate, requireWorker, getAuthorizedZespolIds } = require('../middleware/auth');
 
 (async () => {
   try {
@@ -111,12 +111,31 @@ router.get('/count', async (req, res) => {
     } catch {}
 
     let spamCount = 0;
-    if (req.user.rola === 'admin') {
-      try {
-        const [[sc]] = await pool.query("SELECT COUNT(*) as cnt FROM ticket WHERE ai_tag = 'spam'");
-        spamCount = sc.cnt;
-      } catch {}
-    }
+    try {
+      const [[sc]] = await pool.query("SELECT COUNT(*) as cnt FROM ticket WHERE ai_tag = 'spam'");
+      spamCount = sc.cnt;
+    } catch {}
+
+    // Nieprzeczytane opinie (CSAT) — tylko dla admina (wszystkie) i kierowników zespołów
+    // (ograniczone do zespołu/zespołów, którymi kierują). Zwykły pracownik nie ma dostępu
+    // do sekcji Opinie, więc zawsze 0.
+    let opinieCount = 0;
+    try {
+      const authorizedZespoly = getAuthorizedZespolIds(req.user);
+      if (authorizedZespoly === 'all') {
+        const [[oc]] = await pool.query("SELECT COUNT(*) as cnt FROM ticket WHERE csat_rating IS NOT NULL AND csat_przeczytane = 0");
+        opinieCount = oc.cnt;
+      } else if (authorizedZespoly.length) {
+        const placeholders = authorizedZespoly.map(() => '?').join(',');
+        const [[oc]] = await pool.query(
+          `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
+           JOIN zespol_has_ticket zht ON zht.ticket_id = t.id
+           WHERE t.csat_rating IS NOT NULL AND t.csat_przeczytane = 0 AND zht.zespol_id IN (${placeholders})`,
+          authorizedZespoly
+        );
+        opinieCount = oc.cnt;
+      }
+    } catch {}
 
     const [[newest]] = await pool.query('SELECT MAX(data_utworzenia) as ts FROM ticket');
 
@@ -144,6 +163,16 @@ router.get('/count', async (req, res) => {
       if (la) { lastAssignedAt = la.created_at || 0; lastAssignedTicketId = la.ticket_id; }
     } catch {}
 
+    // Ostatnia opinia (CSAT) udostępniona mi przez kierownika
+    let lastCsatSharedAt = 0, lastCsatSharedTicketId = null;
+    try {
+      const [[cs]] = await pool.query(
+        `SELECT id, csat_pokazany_at FROM ticket WHERE csat_pokazany_user_id = ? ORDER BY csat_pokazany_at DESC LIMIT 1`,
+        [req.user.id]
+      );
+      if (cs) { lastCsatSharedAt = cs.csat_pokazany_at || 0; lastCsatSharedTicketId = cs.id; }
+    } catch {}
+
     let onlineUsers = [];
     try {
       const now = Math.floor(Date.now() / 1000);
@@ -158,12 +187,14 @@ router.get('/count', async (req, res) => {
 
     res.json({
       nowe: nowe.cnt, wtoku: wtoku.cnt, moje: moje.cnt, zespolowe: zespolowe.cnt, czaty: czatyNowe.cnt + czatyWtoku.cnt, czatyNowe: czatyNowe.cnt, czatyWtoku: czatyWtoku.cnt, odlozone: odloz.cnt, mojeOdlozone: mojeOdloz.cnt,
-      alerts: alertCount, spam: spamCount,
+      alerts: alertCount, spam: spamCount, opinie: opinieCount,
       last_ticket_at: newest.ts || 0,
       last_reply_at: lastReplyAt,
       last_reply_ticket_id: lastReplyTicketId,
       last_assigned_at: lastAssignedAt,
       last_assigned_ticket_id: lastAssignedTicketId,
+      last_csat_shared_at: lastCsatSharedAt,
+      last_csat_shared_ticket_id: lastCsatSharedTicketId,
       online_users: onlineUsers,
     });
   } catch (err) {

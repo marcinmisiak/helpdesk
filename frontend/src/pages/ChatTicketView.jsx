@@ -222,10 +222,10 @@ export default function ChatTicketView() {
         </Link>
       </div>
 
-      <div className="flex gap-4 items-start">
+      <div className="flex gap-4 items-stretch" style={{ height: 'calc(100vh - 220px)' }}>
         {/* Główna kolumna: wątek + composer */}
         <div className="flex-1 min-w-0 card p-0 flex flex-col overflow-hidden">
-          <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: '65vh', minHeight: '320px' }}>
+          <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: '40vh', minHeight: '200px' }}>
             {allMessages.map(m => (
               m.jest_systemowa ? (
                 <div key={m.id} className="text-center text-xs text-gray-400 px-4 py-1">{m.tresc}</div>
@@ -258,7 +258,7 @@ export default function ChatTicketView() {
             <div ref={bottomRef} />
           </div>
 
-          <div className="border-t dark:border-gray-800 p-3">
+          <div className="border-t dark:border-gray-800 p-3 flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-3">
                 {templates?.length > 0 && (
@@ -280,14 +280,12 @@ export default function ChatTicketView() {
                 {t('ticket_view.reply_close_after')}
               </label>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-1 min-h-0">
               <textarea
                 value={message}
                 onChange={e => setMessage(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                rows={2}
                 placeholder={t('chat_view.message_placeholder')}
-                className="input resize-none flex-1"
+                className="input resize-none flex-1 h-full"
               />
               <button onClick={sendMessage} disabled={sending || !message.trim()} className="btn-primary self-end disabled:opacity-50">
                 {sending ? t('ticket_view.reply_sending') : t('chat_view.send')}
@@ -297,7 +295,7 @@ export default function ChatTicketView() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-72 flex-shrink-0 space-y-3">
+        <div className="w-72 flex-shrink-0 space-y-3 overflow-y-auto">
           <div className="card">
             <h4 className="label mb-2">{t('chat_view.status_section')}</h4>
             <div className="flex gap-1">

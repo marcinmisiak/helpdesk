@@ -4,6 +4,7 @@ const pool = require('../config/db');
 const msGraph = require('./msGraphClient');
 const { getSiteUrl } = require('./siteUrl');
 const { t, resolveLang, getAppLang } = require('../i18n/index');
+const { extractEmail } = require('./spamBlocklist');
 
 async function getSettings() {
   const [[s]] = await pool.query('SELECT * FROM ustawienia WHERE id = 1');
@@ -535,4 +536,29 @@ async function sendTicketRegisteredEmail({ numer, from, subject, kategoriaNazwa 
   }
 }
 
-module.exports = { sendReply, sendNotification, sendForward, formalTemplate, getSenderInfo, getAppName, notifyAdminsNewTicket, sendTicketRegisteredEmail, sendSurvey, isSystemSenderEmail };
+// ─── sendTicketDeferredEmail — powiadomienie zgłaszającego o odłożeniu zgłoszenia ────────
+// `from` bywa samą nazwą bez adresu (czat bez podanego emaila, Messenger) — extractEmail
+// zwraca null w takim wypadku i wysyłka jest pomijana zamiast próbować wysłać na nie-adres.
+async function sendTicketDeferredEmail({ numer, from }) {
+  try {
+    const email = extractEmail(from);
+    if (!email) return;
+    if (await isSystemSenderEmail(email)) return;
+
+    const lang = await getAppLang(pool);
+
+    await sendNotification({
+      to: email,
+      subject: t(lang, 'subject_ticket_deferred', { numer }),
+      greeting: t(lang, 'greeting_formal'),
+      lang,
+      html: `<p>${t(lang, 'ticket_deferred_intro', { numer })}</p>`,
+    });
+
+    console.log(`[Mailer] sendTicketDeferredEmail to=${email} numer=${numer}`);
+  } catch (e) {
+    console.warn('[sendTicketDeferredEmail]', e.message);
+  }
+}
+
+module.exports = { sendReply, sendNotification, sendForward, formalTemplate, getSenderInfo, getAppName, notifyAdminsNewTicket, sendTicketRegisteredEmail, sendSurvey, isSystemSenderEmail, sendTicketDeferredEmail };

@@ -65,3 +65,11 @@ Dla połączenia IMAP dostępny jest przycisk **Testuj połączenie** — sprawd
 ## Edycja i usuwanie kanału
 
 Listę kanałów można przeszukać po nazwie. Przy każdym kanale dostępne są akcje **Edytuj** i **Usuń** — usunięcie kanału nie usuwa już utworzonych na jego podstawie ticketów, pozostają one w systemie tak jak wcześniej, po prostu kanał przestaje istnieć i przestaje odbierać nową pocztę/czaty.
+
+---
+
+## Odpowiadanie na czacie i Messengerze
+
+Zgłoszenia z czatu na żywo i Messengera mają dedykowany widok konwersacji (sekcja **Czaty** w menu bocznym) — dymki wiadomości zamiast klasycznego formularza e-mail, tak jak w komunikatorze.
+
+Pole odpowiedzi zajmuje dużą część ekranu, aby wygodnie pisać dłuższe wiadomości. **Enter przechodzi do nowej linii — nie wysyła wiadomości.** Aby wysłać odpowiedź, kliknij przycisk **Wyślij**.

@@ -436,6 +436,22 @@ The public form always sends a confirmation email with the ticket number after s
 
 ---
 
+## Bulk Actions on the Ticket List
+
+An administrator can select several tickets at once on the list (checkboxes on each row) and run a single bulk action on them instead of opening each one individually:
+
+| Action | What it does |
+|--------|--------------|
+| **Close selected** | Changes the status of all selected tickets to Closed |
+| **Delete selected** | Permanently deletes the selected tickets — this only applies to the ones among the selection that are already **closed**; the rest are skipped. Irreversible: also deletes all correspondence, notes, and attachments |
+| **Assign selected** | Assigns all selected tickets to one worker or team at once |
+| **Change category** | Sets the same category for all selected tickets |
+| **🤖 Classify with AI** | Runs the AI classifier (the same one that evaluates new tickets) on the selected tickets — useful for processing a backlog from before classification was enabled. A progress bar shows how many tickets have been processed |
+
+Bulk actions are only available to the **administrator** role — workers do not see checkboxes or bulk buttons on the ticket list. Each bulk action is also logged separately in every affected ticket's event log (tagged "bulk") — see the section below.
+
+---
+
 ## Ticket Event Log (Audit Trail)
 
 | Field | Description |

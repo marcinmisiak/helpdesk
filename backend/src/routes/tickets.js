@@ -6,7 +6,7 @@ const multer = require('multer');
 const pool = require('../config/db');
 const { authenticate, requireWorker, requireAdmin } = require('../middleware/auth');
 const mailer = require('../utils/mailer');
-const { getAppName, sendTicketRegisteredEmail } = require('../utils/mailer');
+const { getAppName, sendTicketRegisteredEmail, sendTicketDeferredEmail } = require('../utils/mailer');
 const { t: tr, resolveLang } = require('../i18n/index');
 const { notifyAllAdmins, notifyUsers } = require('../utils/webpush');
 const { getSiteUrl } = require('../utils/siteUrl');
@@ -18,6 +18,7 @@ const { sendTicketReply } = require('../utils/ticketReply');
 const { sendWebhookEvent } = require('../utils/webhookClient');
 const { getArchivedMonthsSet } = require('../utils/archiveManager');
 const { logTicketEvent } = require('../utils/ticketLog');
+const { deleteTicketsCascade } = require('../utils/ticketDelete');
 
 // Załączniki są zapisywane jako "<YYYY-MM>/<nazwa>" (patrz multer storage poniżej) —
 // pierwsze 7 znaków filepath to miesiąc; sprawdzamy go względem plik_archiwum, żeby
@@ -185,7 +186,7 @@ router.get('/odlozone', async (req, res) => {
 });
 
 // GET /api/tickets/spam — lista spamu (paginacja)
-router.get('/spam', requireAdmin, async (req, res) => {
+router.get('/spam', requireWorker, async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
@@ -202,33 +203,8 @@ router.get('/spam', requireAdmin, async (req, res) => {
   }
 });
 
-// Usuwa zależne wiersze (plik/korespondencja/notatka/user_has_ticket) przed DELETE z ticket —
-// inaczej pojedynczy ticket z odpowiedzią/notatką/przydziałem blokuje (FK constraint) usunięcie
-// całej partii na raz, bo DELETE FROM ticket WHERE id IN (...) jest jednym atomowym zapytaniem.
-async function deleteTicketsCascade(ids) {
-  if (!ids.length) return 0;
-  const placeholders = ids.map(() => '?').join(',');
-
-  const [files] = await pool.query(`SELECT filepath FROM plik WHERE ticket_id IN (${placeholders})`, ids);
-  for (const f of files) {
-    try { fs.unlinkSync(path.join(uploadDir, f.filepath)); } catch {}
-  }
-
-  await pool.query(`DELETE FROM plik WHERE ticket_id IN (${placeholders})`, ids);
-  await pool.query(`DELETE FROM korespondencja WHERE ticket_id IN (${placeholders})`, ids);
-  await pool.query(`DELETE FROM notatka WHERE ticket_id IN (${placeholders})`, ids).catch(() => {});
-  await pool.query(`DELETE FROM user_has_ticket WHERE ticket_id IN (${placeholders})`, ids);
-  await pool.query(`DELETE FROM zespol_has_ticket WHERE ticket_id IN (${placeholders})`, ids).catch(() => {});
-  await pool.query(`UPDATE ticket SET merged_into_id = NULL WHERE merged_into_id IN (${placeholders})`, ids).catch(() => {});
-
-  const [result] = await pool.query(
-    `DELETE FROM ticket WHERE id IN (${placeholders}) AND ai_tag = 'spam'`, ids
-  );
-  return result.affectedRows;
-}
-
 // DELETE /api/tickets/spam/masowe — trwałe usunięcie zaznaczonych
-router.delete('/spam/masowe', requireAdmin, async (req, res) => {
+router.delete('/spam/masowe', requireWorker, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!ids?.length) return res.status(400).json({ error: 'Brak ids' });
@@ -240,7 +216,7 @@ router.delete('/spam/masowe', requireAdmin, async (req, res) => {
 });
 
 // DELETE /api/tickets/spam/wszystkie — usuń cały spam
-router.delete('/spam/wszystkie', requireAdmin, async (req, res) => {
+router.delete('/spam/wszystkie', requireWorker, async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT id FROM ticket WHERE ai_tag = 'spam'");
     const deleted = await deleteTicketsCascade(rows.map(r => r.id));
@@ -1082,6 +1058,10 @@ router.post('/:id/odloz', async (req, res) => {
       actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
       meta: { until: data },
     });
+
+    const [[ticket]] = await pool.query('SELECT numer, message_from FROM ticket WHERE id = ?', [req.params.id]);
+    if (ticket) sendTicketDeferredEmail({ numer: ticket.numer, from: ticket.message_from }).catch(() => {});
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1447,7 +1427,7 @@ router.post('/:id/classify', async (req, res) => {
 
 
 // POST /api/tickets/:id/nie-spam — cofnij oznaczenie jako spam
-router.post('/:id/nie-spam', requireAdmin, async (req, res) => {
+router.post('/:id/nie-spam', requireWorker, async (req, res) => {
   try {
     const [[ticket]] = await pool.query('SELECT message_from, data_utworzenia FROM ticket WHERE id = ?', [req.params.id]);
     if (!ticket) return res.status(404).json({ error: 'Ticket nie znaleziony' });

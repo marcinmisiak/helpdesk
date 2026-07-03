@@ -30,10 +30,17 @@ Each ticket has one of three statuses:
 
 ## Priorities
 
-- **Low** — an issue that does not require an immediate response
-- **Normal** — a standard request
-- **High** — an urgent issue requiring a quick response
-- **Critical** — an outage or work-blocking problem
+The system uses three priority levels, each with its own SLA targets (time to first response / time to resolution):
+
+| Priority | Response target | Resolution target |
+|----------|------------------|--------------------|
+| **P1 – Critical** | 1 hour | 8 hours |
+| **P2 – Normal** (default) | 4 hours | 24 hours |
+| **P3 – Low** | 8 hours | 48 hours |
+
+For tickets arriving by email, the web form, or chat, the priority is set automatically by the AI classifier based on the message content. When creating a ticket manually in the panel, the administrator picks the priority from a dropdown — it defaults to P2.
+
+SLA countdowns are visible on the ticket page and in the **Statistics** section (see the *Statistics and Opinions* chapter).
 
 ## Attachments
 

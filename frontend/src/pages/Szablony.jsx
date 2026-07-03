@@ -3,13 +3,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
-function TemplateModal({ template, onClose, onSuccess }) {
+function TemplateModal({ template, myTeams, isAdmin, onClose, onSuccess }) {
   const { t } = useTranslation();
   const [form, setForm] = useState({
     nazwa: template?.nazwa || '',
     tresc: template?.tresc || '',
     kolejnosc: template?.kolejnosc ?? 0,
+    zespol_id: template?.zespol_id ?? (myTeams[0]?.id ?? ''),
   });
 
   const isEdit = !!template;
@@ -18,12 +20,16 @@ function TemplateModal({ template, onClose, onSuccess }) {
     if (!form.nazwa.trim() || !form.tresc.trim()) {
       return toast.error(t('templates.error_save'));
     }
+    if (!isAdmin && !form.zespol_id) {
+      return toast.error(t('templates.no_teams_warning'));
+    }
     try {
+      const payload = { ...form, zespol_id: form.zespol_id || null };
       if (isEdit) {
-        await api.put(`/szablony/${template.id}`, form);
+        await api.put(`/szablony/${template.id}`, payload);
         toast.success(t('templates.saved'));
       } else {
-        await api.post('/szablony', form);
+        await api.post('/szablony', payload);
         toast.success(t('templates.created'));
       }
       onSuccess();
@@ -52,6 +58,14 @@ function TemplateModal({ template, onClose, onSuccess }) {
             <textarea value={form.tresc} onChange={set('tresc')} rows={8} className="input resize-y" />
           </div>
           <div>
+            <label className="label">{t('templates.field_team')}</label>
+            <select value={form.zespol_id} onChange={set('zespol_id')} className="input">
+              {!myTeams.length && <option value="">{t('templates.team_select_placeholder')}</option>}
+              {isAdmin && <option value="">{t('templates.team_global')}</option>}
+              {myTeams.map(z => <option key={z.id} value={z.id}>{z.nazwa}</option>)}
+            </select>
+          </div>
+          <div>
             <label className="label">{t('templates.field_order')}</label>
             <input type="number" value={form.kolejnosc} onChange={set('kolejnosc')} className="input max-w-[120px]" />
           </div>
@@ -67,6 +81,7 @@ function TemplateModal({ template, onClose, onSuccess }) {
 
 export default function Szablony() {
   const { t } = useTranslation();
+  const { user, isAdmin } = useAuth();
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState('');
   const qc = useQueryClient();
@@ -76,7 +91,22 @@ export default function Szablony() {
     queryFn: () => api.get('/szablony').then(r => r.data.data),
   });
 
+  const { data: teamsData } = useQuery({
+    queryKey: ['zespoly'],
+    queryFn: () => api.get('/zespoly').then(r => r.data.data),
+  });
+
   const templates = data || [];
+  const teams = teamsData || [];
+  const myTeams = useMemo(
+    () => teams.filter(z => z.czlonkowie_ids?.split(',').map(Number).includes(user?.id)),
+    [teams, user?.id]
+  );
+
+  // Pracownik może zarządzać (edytować/usuwać) tylko szablonami zespołowymi, które backend
+  // już przefiltrował do jego własnych zespołów — globalne (zespol_id === null) są tylko do odczytu.
+  const canManage = (tpl) => isAdmin || tpl.zespol_id !== null;
+  const canAdd = isAdmin || myTeams.length > 0;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -99,8 +129,13 @@ export default function Szablony() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">{t('templates.title')}</h2>
-        <button onClick={() => setModal('new')} className="btn-primary">{t('templates.add')}</button>
+        <button onClick={() => setModal('new')} disabled={!canAdd} className="btn-primary disabled:opacity-50" title={!canAdd ? t('templates.no_teams_warning') : undefined}>
+          {t('templates.add')}
+        </button>
       </div>
+      {!canAdd && (
+        <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">{t('templates.no_teams_warning')}</p>
+      )}
       <div className="mb-3">
         <input
           value={search}
@@ -121,6 +156,7 @@ export default function Szablony() {
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('templates.col_name')}</th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('templates.col_content')}</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('templates.col_team')}</th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">{t('templates.col_actions')}</th>
               </tr>
             </thead>
@@ -130,8 +166,17 @@ export default function Szablony() {
                   <td className="px-3 py-2 font-medium">{s.nazwa}</td>
                   <td className="px-3 py-2 text-gray-600 dark:text-gray-300 max-w-md truncate">{s.tresc}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <button onClick={() => setModal(s)} className="btn-secondary btn-sm mr-2">{t('templates.edit')}</button>
-                    <button onClick={() => remove(s)} className="btn-danger btn-sm">{t('templates.delete')}</button>
+                    {s.zespol_nazwa || <span className="badge-gray">{t('templates.team_global_badge')}</span>}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {canManage(s) ? (
+                      <>
+                        <button onClick={() => setModal(s)} className="btn-secondary btn-sm mr-2">{t('templates.edit')}</button>
+                        <button onClick={() => remove(s)} className="btn-danger btn-sm">{t('templates.delete')}</button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -143,6 +188,8 @@ export default function Szablony() {
       {modal && (
         <TemplateModal
           template={modal === 'new' ? null : modal}
+          myTeams={myTeams}
+          isAdmin={isAdmin}
           onClose={() => setModal(null)}
           onSuccess={() => qc.invalidateQueries(['szablony'])}
         />

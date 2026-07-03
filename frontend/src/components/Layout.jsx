@@ -162,16 +162,18 @@ export default function Layout({ children }) {
 
   useNewTicketAlert(counts, {
     isAdmin,
+    notifyActivity: branding ? !!branding.powiadom_aktywnosc : true,
     onNewTicket: () => showNotif('🎫', t('toast.new_ticket'), '/tickets'),
     onNewReply: (id) => showNotif('💬', t('toast.new_reply'), id ? `/tickets/${id}` : '/moje'),
     onAssigned: (id) => showNotif('📋', t('toast.assigned'), id ? `/tickets/${id}` : '/moje'),
+    onCsatShared: (id) => showNotif('⭐', t('toast.csat_shared'), id ? `/tickets/${id}` : '/moje'),
     onUserOnline: (u) => {
-      if (u.id !== user?.id && branding?.powiadom_aktywnosc) {
+      if (u.id !== user?.id) {
         showNotif('🟢', `${u.imie} ${u.nazwisko} ${t('toast.user_online')}`, null);
       }
     },
     onUserOffline: (u) => {
-      if (u.id !== user?.id && branding?.powiadom_aktywnosc) {
+      if (u.id !== user?.id) {
         showNotif('🔴', `${u.imie} ${u.nazwisko} ${t('toast.user_offline')}`, null);
       }
     },
@@ -224,16 +226,16 @@ export default function Layout({ children }) {
     { to: '/odlozone', label: t('nav.deferred'), icon: '⏸️', badge: counts?.odlozone },
     { to: '/kalendarz', label: t('nav.calendar'), icon: '📅' },
     { to: '/zespoly', label: t('nav.teams'), icon: '👨‍👩‍👧' },
+    { to: '/szablony', label: t('nav.templates'), icon: '📝' },
+    { to: '/spam', label: t('nav.spam'), icon: '🚫', badge: counts?.spam },
     ...(isAdmin || isKierownik ? [
       { to: '/statystyki', label: t('nav.statistics'), icon: '📊' },
-      { to: '/opinie', label: t('nav.opinie'), icon: '⭐' },
+      { to: '/opinie', label: t('nav.opinie'), icon: '⭐', badge: counts?.opinie },
     ] : []),
     ...(isAdmin ? [
       { to: '/uzytkownicy', label: t('nav.users'), icon: '👥' },
       { to: '/kanaly-czatu', label: t('nav.chat_channels'), icon: '🔌' },
-      { to: '/szablony', label: t('nav.templates'), icon: '📝' },
       { to: '/ustawienia', label: t('nav.settings'), icon: '⚙️' },
-      { to: '/spam', label: t('nav.spam'), icon: '🚫', badge: counts?.spam },
     ] : []),
     { to: '/pomoc', label: t('nav.help'), icon: '❓' },
   ];

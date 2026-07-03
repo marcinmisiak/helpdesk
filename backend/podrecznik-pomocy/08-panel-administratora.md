@@ -436,6 +436,22 @@ Formularz publiczny zawsze wysyła e-mail potwierdzający przyjęcie zgłoszenia
 
 ---
 
+## Akcje masowe na liście zgłoszeń
+
+Administrator może zaznaczyć kilka zgłoszeń naraz na liście (checkboxy przy każdym wierszu) i wykonać na nich jedną akcję zbiorczą zamiast otwierać każde osobno:
+
+| Akcja | Co robi |
+|-------|---------|
+| **Zamknij zaznaczone** | Zmienia status wszystkich zaznaczonych zgłoszeń na Zamknięte |
+| **Usuń zaznaczone** | Trwale usuwa zaznaczone zgłoszenia — operacja obejmuje tylko te już **zamknięte** spośród zaznaczonych, pozostałe są pomijane. Nieodwracalne: usuwa też całą korespondencję, notatki i załączniki |
+| **Przydziel zaznaczone** | Przydziela wszystkie zaznaczone zgłoszenia jednemu pracownikowi lub zespołowi naraz |
+| **Zmień kategorię** | Ustawia tę samą kategorię dla wszystkich zaznaczonych zgłoszeń |
+| **🤖 Klasyfikuj AI** | Uruchamia klasyfikator AI (ten sam, który ocenia nowe zgłoszenia) dla zaznaczonych zgłoszeń — przydatne przy przetwarzaniu zaległości sprzed włączenia klasyfikacji. Pasek postępu pokazuje liczbę przetworzonych zgłoszeń |
+
+Akcje masowe są dostępne wyłącznie dla roli **administrator** — pracownik nie widzi checkboxów ani przycisków zbiorczych na liście zgłoszeń. Każda akcja zbiorcza jest też osobno odnotowana w dzienniku zdarzeń każdego zgłoszenia (z dopiskiem „zbiorczo”) — patrz sekcja poniżej.
+
+---
+
 ## Dziennik zdarzeń zgłoszeń (audyt)
 
 | Pole | Opis |

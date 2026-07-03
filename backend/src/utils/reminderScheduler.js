@@ -4,8 +4,27 @@ const pool = require('../config/db');
 const { sendNotification, isSystemSenderEmail } = require('./mailer');
 const { getSiteUrl } = require('./siteUrl');
 const { t: tr, resolveLang, getAppLang } = require('../i18n/index');
+const { deleteTicketsCascade } = require('./ticketDelete');
 
 let timer = null;
+
+const SPAM_RETENTION_DAYS = 30;
+
+// Trwałe usunięcie zgłoszeń oznaczonych jako spam starszych niż 30 dni (licząc od daty
+// utworzenia) — niezależne od przełącznika przypomnień (reminder_enabled) i wywoływane przy
+// każdym tyknięciu harmonogramu; zapytanie jest samo w sobie idempotentne (po pierwszym
+// przebiegu w danym dniu nie ma już nic do skasowania), więc nie potrzeba osobnego znacznika
+// "ostatnio uruchomione", tak jak przy przypomnieniach e-mail.
+async function cleanupOldSpam() {
+  const cutoff = Math.floor(Date.now() / 1000) - SPAM_RETENTION_DAYS * 24 * 3600;
+  const [rows] = await pool.query(
+    "SELECT id FROM ticket WHERE ai_tag = 'spam' AND data_utworzenia < ?",
+    [cutoff]
+  );
+  if (!rows.length) return;
+  const deleted = await deleteTicketsCascade(rows.map((r) => r.id));
+  if (deleted > 0) console.log(`[Reminder] Spam cleanup: usunięto ${deleted} zgłoszeń starszych niż ${SPAM_RETENTION_DAYS} dni`);
+}
 
 async function getSettings() {
   const [[s]] = await pool.query('SELECT * FROM ustawienia WHERE id = 1');
@@ -196,6 +215,12 @@ async function runCloseReminders(settings) {
 }
 
 async function runReminders() {
+  try {
+    await cleanupOldSpam();
+  } catch (e) {
+    console.error('[Reminder] Spam cleanup error:', e.message);
+  }
+
   try {
     const settings = await getSettings();
     if (!settings?.reminder_enabled) return;

@@ -110,7 +110,7 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       <Route path="/szablony" element={
-        <ProtectedRoute adminOnly>
+        <ProtectedRoute>
           <Layout><Szablony /></Layout>
         </ProtectedRoute>
       } />
@@ -130,7 +130,7 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       <Route path="/spam" element={
-        <ProtectedRoute adminOnly>
+        <ProtectedRoute>
           <Layout><Spam /></Layout>
         </ProtectedRoute>
       } />

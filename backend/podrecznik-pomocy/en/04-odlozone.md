@@ -14,6 +14,8 @@ Deferring suspends work on a ticket until a specified date. The request remains 
 4. Optionally add a reason for deferring
 5. Confirm
 
+The requester automatically receives an email letting them know the team needs more time to respond and asking for their patience — there is no need to send this message manually.
+
 ## Browsing Deferred Tickets
 
 In the sidebar menu you will find the **Deferred** section showing the number of currently deferred requests. Clicking it takes you to a list of all deferred tickets with their return dates.
