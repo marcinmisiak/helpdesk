@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const pool = require('../config/db');
-const { authenticate, requireWorker, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireWorker, requireAdmin, getAuthorizedZespolIds } = require('../middleware/auth');
 const mailer = require('../utils/mailer');
 const { getAppName, sendTicketRegisteredEmail, sendTicketDeferredEmail } = require('../utils/mailer');
 const { t: tr, resolveLang } = require('../i18n/index');
@@ -447,52 +447,135 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/tickets - nowy ticket
-router.post('/', requireAdmin, async (req, res) => {
+// POST /api/tickets — ręczne założenie zgłoszenia przez pracownika lub admina. `typ` decyduje
+// o wymaganych polach i o tym, co dzieje się po utworzeniu:
+//   - 'zgloszenie' (domyślny) — zgłoszenie w imieniu zewnętrznego zgłaszającego (np. telefon,
+//     rozmowa osobista) — identyczne zachowanie jak dotychczasowy formularz, teraz dostępne
+//     dla każdego pracownika, nie tylko admina.
+//   - 'pomoc' — pracownik sam jest zgłaszającym i prosi o pomoc konkretny zespół; message_from
+//     to jego własne dane, nie ma dedykowanego adresata.
+//   - 'zadanie' — kierownik zespołu (lub admin) zakłada zadanie i od razu przydziela je
+//     wybranym pracownikom swojego zespołu, opcjonalnie z własnym terminem reakcji.
+router.post('/', async (req, res) => {
   try {
-    const { message_from, message_to, message_subject, tresc, html, message_cc, priority } = req.body;
+    const {
+      typ = 'zgloszenie',
+      message_to, message_cc, message_subject, tresc, html, priority,
+      zespol_id, assign_user_ids, sla_response_deadline,
+    } = req.body;
+    let { message_from } = req.body;
+
+    if (!['zgloszenie', 'pomoc', 'zadanie'].includes(typ)) {
+      return res.status(400).json({ error: 'Nieprawidłowy typ zgłoszenia' });
+    }
+    if (!message_subject?.trim()) return res.status(400).json({ error: 'Temat jest wymagany' });
+
+    if (typ === 'zgloszenie') {
+      if (!message_from?.trim()) return res.status(400).json({ error: 'Zgłaszający jest wymagany' });
+    } else if (typ === 'pomoc') {
+      if (!zespol_id) return res.status(400).json({ error: 'Wybierz zespół' });
+      message_from = `${req.user.imie} ${req.user.nazwisko} <${req.user.email}>`;
+    } else {
+      // 'zadanie' — tylko admin albo kierownik zespołu, do którego zakłada zadanie
+      if (!zespol_id) return res.status(400).json({ error: 'Wybierz zespół' });
+      if (req.user.rola !== 'admin') {
+        // getAuthorizedZespolIds zwraca tu zawsze tablicę (nie 'all') — 'admin' obsłużony wyżej.
+        const authorizedZespoly = getAuthorizedZespolIds(req.user);
+        if (!authorizedZespoly.includes(Number(zespol_id))) {
+          return res.status(403).json({ error: 'Zadania możesz zakładać tylko dla zespołu, którym kierujesz' });
+        }
+      }
+      if (!Array.isArray(assign_user_ids) || !assign_user_ids.length) {
+        return res.status(400).json({ error: 'Wybierz co najmniej jednego pracownika' });
+      }
+      message_from = `${req.user.imie} ${req.user.nazwisko} <${req.user.email}>`;
+    }
+
     const numer = Math.random().toString().slice(2, 8);
     const now = Math.floor(Date.now() / 1000);
     const normalizedPriority = normalizePriority(priority);
     const deadlines = computeDeadlines(now, normalizedPriority);
+    // Kierownik może nadpisać automatycznie wyliczony termin reakcji własnym (pole "zadanie").
+    const responseDeadline = (typ === 'zadanie' && sla_response_deadline)
+      ? Number(sla_response_deadline)
+      : deadlines.responseDeadline;
+
+    const ZRODLO_BY_TYP = { zgloszenie: null, pomoc: 'pomoc_pracownika', zadanie: 'zadanie_wewnetrzne' };
 
     const [result] = await pool.query(
-      `INSERT INTO ticket (numer, message_from, message_to, message_subject, tresc, html, message_cc, status, data_utworzenia, odlozony, podswietl)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 0)`,
-      [numer, message_from, message_to, message_subject, tresc, html, message_cc || '', now]
+      `INSERT INTO ticket (numer, message_from, message_to, message_subject, tresc, html, message_cc, status, data_utworzenia, odlozony, podswietl, zrodlo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 0, ?)`,
+      [numer, message_from, message_to, message_subject, tresc, html, message_cc || '', now, ZRODLO_BY_TYP[typ]]
     );
+    const ticketId = result.insertId;
 
     try {
       await pool.query(
         'UPDATE ticket SET priority = ?, sla_response_deadline = ?, sla_resolution_deadline = ?, sla_warning_sent_at = NULL WHERE id = ?',
-        [normalizedPriority, deadlines.responseDeadline, deadlines.resolutionDeadline, result.insertId]
+        [normalizedPriority, responseDeadline, deadlines.resolutionDeadline, ticketId]
       );
     } catch {
       // Gdy kolumny SLA nie istnieją, endpoint tworzenia ticketu nadal działa.
     }
 
-    notifyAllAdmins({
-      title: 'Nowe zgłoszenie',
-      body: `Od: ${message_from} | Temat: ${message_subject}`,
-      url: `/tickets/${result.insertId}`,
-    }).catch(() => {});
-
-    classifyAndSave(result.insertId, { subject: message_subject, body: tresc, from: message_from }).catch(() => {});
-
-    sendTicketRegisteredEmail({ numer, from: message_from, subject: message_subject }).catch(() => {});
-
-    sendWebhookEvent('ticket.created', {
-      ticket: { id: result.insertId, numer, subject: message_subject, from: message_from, priority: normalizedPriority, status: 1, zrodlo: null },
-      message: { tresc, html, from: message_from },
-    }).catch(() => {});
-
-    logTicketEvent(result.insertId, {
+    logTicketEvent(ticketId, {
       typ: 'created',
       userId: req.user.id,
       actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
-      meta: { source: 'manual' },
+      meta: { source: 'manual', manual_typ: typ },
     });
 
-    res.status(201).json({ id: result.insertId, numer, priority: normalizedPriority });
+    if (typ === 'zgloszenie') {
+      notifyAllAdmins({
+        title: 'Nowe zgłoszenie',
+        body: `Od: ${message_from} | Temat: ${message_subject}`,
+        url: `/tickets/${ticketId}`,
+      }).catch(() => {});
+
+      classifyAndSave(ticketId, { subject: message_subject, body: tresc, from: message_from }).catch(() => {});
+      sendTicketRegisteredEmail({ numer, from: message_from, subject: message_subject }).catch(() => {});
+      sendWebhookEvent('ticket.created', {
+        ticket: { id: ticketId, numer, subject: message_subject, from: message_from, priority: normalizedPriority, status: 1, zrodlo: null },
+        message: { tresc, html, from: message_from },
+      }).catch(() => {});
+    } else if (typ === 'pomoc') {
+      await pool.query(
+        'INSERT INTO zespol_has_ticket (ticket_id, zespol_id, created_at, created_by) VALUES (?, ?, ?, ?)',
+        [ticketId, zespol_id, now, req.user.id]
+      );
+      const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [zespol_id]);
+      notifyUsers(members.map((m) => m.user_id), {
+        title: `Prośba o pomoc od ${req.user.imie} ${req.user.nazwisko}`,
+        body: message_subject,
+        url: `/tickets/${ticketId}`,
+      }).catch(() => {});
+    } else {
+      // 'zadanie' — zespół ustawiony jawnie (nie przez syncZespolForAssignee), żeby przydzielenie
+      // do kilku osób z różnych zespołów nie "przeciągało" zadania do zespołu ostatniej z nich.
+      await pool.query(
+        'INSERT INTO zespol_has_ticket (ticket_id, zespol_id, created_at, created_by) VALUES (?, ?, ?, ?)',
+        [ticketId, zespol_id, now, req.user.id]
+      );
+      for (const uid of assign_user_ids) {
+        await pool.query(
+          'INSERT INTO user_has_ticket (ticket_id, user_id, data, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [ticketId, uid, now, req.user.id, req.user.id, now, now]
+        );
+        logTicketEvent(ticketId, {
+          typ: 'assigned',
+          userId: req.user.id,
+          actorLabel: `${req.user.imie} ${req.user.nazwisko}`,
+        });
+      }
+      await pool.query('UPDATE ticket SET status = 2 WHERE id = ?', [ticketId]);
+      notifyUsers(assign_user_ids, {
+        title: `Nowe zadanie od ${req.user.imie} ${req.user.nazwisko}`,
+        body: message_subject,
+        url: `/tickets/${ticketId}`,
+      }).catch(() => {});
+    }
+
+    res.status(201).json({ id: ticketId, numer, priority: normalizedPriority });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

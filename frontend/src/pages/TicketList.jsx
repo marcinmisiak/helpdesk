@@ -364,9 +364,7 @@ export default function TicketList({ title, queryParams = {} }) {
               </button>
             </>
           )}
-          {isAdmin && (
-            <Link to="/tickets/nowy" className="btn-primary">{t('ticket_list.new_ticket')}</Link>
-          )}
+          <Link to="/tickets/nowy" className="btn-primary">{t('ticket_list.new_ticket')}</Link>
           {isAdmin && (
             <button
               onClick={startBulkClassify}

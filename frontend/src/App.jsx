@@ -60,7 +60,7 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       <Route path="/tickets/nowy" element={
-        <ProtectedRoute adminOnly>
+        <ProtectedRoute>
           <Layout><TicketNew /></Layout>
         </ProtectedRoute>
       } />
