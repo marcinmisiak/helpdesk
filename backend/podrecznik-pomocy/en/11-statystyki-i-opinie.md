@@ -43,3 +43,17 @@ A list of every satisfaction survey (CSAT) submitted by requesters. For each ent
 The list is paginated and, like Statistics, can be filtered by team (for administrators) or is automatically limited to the manager's team.
 
 > **Where do opinions come from?** After a ticket is closed, the system sends the requester an email asking them to rate the support they received (if the feature is enabled in Settings). Clicking a rating in the email saves it without requiring a login.
+
+### Unread Opinions Counter
+
+The **Opinions** entry in the sidebar shows a counter of unread ratings — limited to the manager's own team(s), or covering everyone for an administrator. A newly submitted rating starts out unread (highlighted with a blue background and a dot next to its number); simply opening the **Opinions** page marks the ratings shown on it as read and immediately removes them from the counter.
+
+### Showing an Opinion to a Worker
+
+Workers don't have access to the Opinions section, so by default they never see the ratings requesters leave. A manager (or administrator) can share a specific rating with the person who replied to that ticket:
+
+1. Click **Show to worker** next to the chosen opinion
+2. Pick, from the list, the worker who replied to that ticket
+3. Confirm
+
+The chosen worker gets a push notification and, the next time they're in the system, a sound plus a ⭐ toast in the bottom-right corner. The rating (stars and any comment) also appears permanently on that ticket's page, in the **Satisfaction rating** field — visible only to that worker (and always to managers and administrators), not to other members of the team.

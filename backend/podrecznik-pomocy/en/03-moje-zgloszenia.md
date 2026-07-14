@@ -91,6 +91,8 @@ All tickets marked as spam are listed in the **Spam** section in the sidebar (th
 - **Unmark** (restore) a single ticket with the **Not spam** button — it returns to the normal workflow and the sender is added to the trusted list
 - **Permanently delete** selected tickets or all spam at once
 
+> **Automatic cleanup:** tickets marked as spam are automatically and permanently deleted 30 days after their creation date — no manual cleanup needed. If you want to keep a spam ticket longer than 30 days (e.g. as evidence), mark it **Not spam** before that deadline.
+
 ## Filtering and Sorting
 
 You can filter the ticket list by:

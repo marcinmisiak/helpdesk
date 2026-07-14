@@ -6,17 +6,21 @@ Zgłoszenie (ticket) to podstawowy element systemu — reprezentuje prośbę o p
 
 Jeśli masz dostęp do formularza publicznego, możesz zgłosić sprawę bez logowania, korzystając z dedykowanego adresu internetowego udostępnionego przez administratora.
 
-Zalogowani użytkownicy z rolą **administratora** mogą tworzyć zgłoszenia bezpośrednio w panelu:
+Zalogowani pracownicy i administratorzy mogą też założyć zgłoszenie ręcznie, bezpośrednio w panelu — przyciskiem **+ Nowy ticket** widocznym na liście zgłoszeń (**Moje zgłoszenia** albo **Tickety**). Formularz ma trzy warianty do wyboru na górze strony — **rodzaj zgłoszenia** decyduje, jakie pola się pojawiają i co dzieje się po zapisaniu:
 
-1. Przejdź do sekcji **Tickety** w menu
-2. Kliknij przycisk **Nowy ticket**
-3. Wypełnij formularz:
-   - **Temat** — krótki opis sprawy
-   - **Treść** — szczegółowy opis problemu
-   - **Kategoria** — wybierz odpowiednią kategorię
-   - **Priorytet** — określ pilność sprawy
-4. Opcjonalnie dodaj załączniki (pliki, zrzuty ekranu)
-5. Kliknij **Zapisz**
+### Zgłoszenie zewnętrzne
+
+Zgłoszenie w imieniu osoby z zewnątrz — np. telefoniczne albo zgłoszone osobiście. Podajesz dane zgłaszającego (e-mail, opcjonalnie „Do” i „CC”), temat, priorytet i treść. Działa dokładnie tak jak zgłoszenie z formularza publicznego czy e-maila — zgłaszający dostaje e-mail z potwierdzeniem i numerem sprawy.
+
+### Potrzebuję pomocy
+
+Gdy to Ty potrzebujesz pomocy innego zespołu (np. dział kadr prosi dział IT o nadanie dostępu) — zgłaszającym automatycznie stajesz się Ty, więc nie podajesz żadnych danych kontaktowych. Wybierasz tylko **zespół**, do którego trafia prośba — wszyscy jego członkowie od razu dostają powiadomienie push.
+
+### Zadanie dla zespołu
+
+Widoczne tylko dla **kierowników zespołów** i administratorów (patrz rozdział *Zespoły*). Pozwala od razu założyć zgłoszenie i przydzielić je wybranym pracownikom własnego zespołu — możesz zaznaczyć kilku naraz, bez osobnego kroku „Przydziel” po utworzeniu. Dodatkowo można ustawić własny **Deadline reakcji**, który nadpisuje termin wyliczany automatycznie z priorytetu (patrz „Priorytety” poniżej). Kierownik zakłada zadania wyłącznie dla zespołu (lub zespołów), którymi kieruje — administrator dla dowolnego zespołu.
+
+Każdy z trzech wariantów wymaga podania **tematu** i priorytetu; treść jest opcjonalna.
 
 ## Statusy zgłoszenia
 

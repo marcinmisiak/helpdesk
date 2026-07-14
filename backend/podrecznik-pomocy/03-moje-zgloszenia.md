@@ -91,6 +91,8 @@ Wszystkie zgłoszenia oznaczone jako spam znajdziesz w sekcji **Spam** w menu bo
 - **Cofnąć oznaczenie** (przywrócić) pojedyncze zgłoszenie przyciskiem **To nie spam** — wraca ono do normalnego obiegu, a nadawca trafia na listę zaufanych
 - **Usunąć trwale** zaznaczone zgłoszenia lub cały spam naraz
 
+> **Automatyczne czyszczenie:** zgłoszenia oznaczone jako spam są trwale usuwane automatycznie po 30 dniach od daty utworzenia — nie trzeba ich ręcznie sprzątać. Jeśli chcesz zachować spam dłużej niż 30 dni (np. jako dowód), oznacz go jako **To nie spam** przed upływem tego terminu.
+
 ## Filtrowanie i sortowanie
 
 Listę zgłoszeń możesz filtrować według:

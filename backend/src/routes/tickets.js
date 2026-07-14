@@ -172,8 +172,13 @@ router.get('/odlozone', async (req, res) => {
                  WHERE t.odlozony = 1`;
     const params = [];
     if (!isAdmin) {
-      query += ' AND uht.user_id = ?';
-      params.push(req.user.id);
+      // Widoczne jeśli przydzielony bezpośrednio mnie, ALBO przydzielony zespołowi,
+      // którego jestem członkiem (patrz analogiczna logika MINE_OR_TEAM_POOL w alerts.js).
+      query += ` AND (
+        EXISTS (SELECT 1 FROM user_has_ticket x WHERE x.ticket_id = t.id AND x.user_id = ?)
+        OR EXISTS (SELECT 1 FROM zespol_has_ticket zht JOIN zespol_user zu ON zu.zespol_id = zht.zespol_id WHERE zht.ticket_id = t.id AND zu.user_id = ?)
+      )`;
+      params.push(req.user.id, req.user.id);
     }
     query += ' GROUP BY t.id ORDER BY t.odlozony_data ASC';
 

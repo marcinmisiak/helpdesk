@@ -43,3 +43,17 @@ Lista wszystkich ankiet satysfakcji (CSAT) przesłanych przez zgłaszających. D
 Lista jest stronicowana i — tak jak Statystyki — może być filtrowana według zespołu (dla administratora) lub automatycznie ograniczona do zespołu kierownika.
 
 > **Skąd biorą się opinie?** Po zamknięciu zgłoszenia system wysyła zgłaszającemu e-mail z prośbą o ocenę obsługi (jeśli funkcja jest włączona w Ustawieniach). Kliknięcie oceny w e-mailu zapisuje ją bez konieczności logowania.
+
+### Licznik nieprzeczytanych opinii
+
+Pozycja **Opinie** w menu bocznym pokazuje licznik nieprzeczytanych ocen — ograniczony do zespołu (lub zespołów) kierownika, u administratora obejmujący wszystkie. Nowo przesłana ocena jest nieprzeczytana (wyróżniona na liście niebieskim tłem i kropką przy numerze); samo otwarcie strony **Opinie** oznacza widoczne na niej opinie jako przeczytane i od razu zdejmuje je z licznika.
+
+### Pokaż opinię pracownikowi
+
+Pracownicy nie mają dostępu do sekcji Opinie, więc domyślnie nie widzą ocen wystawionych przez zgłaszających. Kierownik (lub administrator) może jednak udostępnić konkretną ocenę osobie, która odpowiadała na dane zgłoszenie:
+
+1. Kliknij **Pokaż pracownikowi** przy wybranej opinii
+2. Wybierz z listy pracownika, który odpowiadał na to zgłoszenie
+3. Potwierdź
+
+Wybrany pracownik dostaje powiadomienie push oraz — przy najbliższej wizycie w systemie — dźwięk i komunikat ⭐ w prawym dolnym rogu ekranu. Ocena (gwiazdki i ewentualny komentarz) pojawia się też trwale na stronie tego zgłoszenia, w polu **Ocena satysfakcji** — widoczne tylko dla tego pracownika (oraz zawsze dla kierowników i administratorów), nie dla innych osób z zespołu.
