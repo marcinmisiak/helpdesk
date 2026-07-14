@@ -404,6 +404,49 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
 
     console.log(`[IMAP] Dodano odpowiedź do ticketu #${ticketId}${isForwardReply ? ' (forward_reply)' : ''}`);
 
+    // Powiadom przypisanych pracowników emailem o nowej odpowiedzi klienta (pomijaj tych, którzy są online)
+    try {
+      const { sendNotification, getAppName } = require('./mailer');
+      const { t: tr, resolveLang } = require('../i18n/index');
+      const ONLINE_THRESHOLD = 3 * 60;
+      const presenceNow = Math.floor(Date.now() / 1000);
+      const [[ticketRow]] = await pool.query('SELECT numer FROM ticket WHERE id = ?', [ticketId]);
+      const [przypisani] = await pool.query(
+        `SELECT u.id, u.email, u.imie FROM user u
+         INNER JOIN user_has_ticket uht ON uht.user_id = u.id
+         LEFT JOIN user_presence up ON up.user_id = u.id
+         WHERE uht.ticket_id = ?
+           AND u.email IS NOT NULL AND u.email != ''
+           AND (up.last_seen_at IS NULL OR up.last_seen_at <= ?)`,
+        [ticketId, presenceNow - ONLINE_THRESHOLD]
+      );
+      if (ticketRow && przypisani.length) {
+        const baseUrl = await getSiteUrl();
+        const appName = await getAppName();
+        const replyContent = (saveText || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        for (const p of przypisani) {
+          const wLang = await resolveLang(pool, p.id);
+          sendNotification({
+            to: p.email,
+            subject: tr(wLang, 'subject_customer_reply_email', { appName, numer: ticketRow.numer }),
+            greeting: p.imie ? tr(wLang, 'greeting_day_with_name', { name: p.imie }) : tr(wLang, 'greeting_formal'),
+            lang: wLang,
+            html: `
+              <p>${tr(wLang, 'public_reply_intro', { numer: ticketRow.numer })}</p>
+              <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px;margin:12px 0;font-size:14px;white-space:pre-wrap;color:#374151">${replyContent}</div>
+              <p style="margin-top:16px">
+                <a href="${baseUrl}/tickets/${ticketId}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px">
+                  ${tr(wLang, 'btn_view_ticket')}
+                </a>
+              </p>`,
+          }).catch(e => console.warn('[IMAP] Email powiadomienia o odpowiedzi nie wysłany:', e.message));
+        }
+      }
+    } catch (e) {
+      console.warn('[IMAP] Błąd powiadomienia email o odpowiedzi klienta:', e.message);
+    }
+
     // Tickety/odpowiedzi z e-maila są obsługiwane wyłącznie ręcznie przez pracowników —
     // webhook n8n (i jego automatyczne odpowiedzi) celowo nigdy ich nie dotyczy, niezależnie
     // od tego, czy ticket pochodzi z głównej skrzynki czy z kanału e-mail (oba mają zrodlo='email').

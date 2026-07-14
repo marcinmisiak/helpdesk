@@ -184,6 +184,39 @@ Zasady:
   }
 }
 
+async function formalizeReply({ tresc = '', subject = '' }) {
+  const client = getClient();
+  if (!client) return null;
+  if (!tresc.trim()) return null;
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        {
+          role: 'system',
+          content: `Jesteś asystentem helpdesku. Przepisz podaną odpowiedź pracownika na formalny, oficjalny ton, zachowując dokładnie ten sam sens i wszystkie informacje merytoryczne — nic nie dodawaj i nic nie pomijaj.
+
+Zasady:
+- Pisz po polsku, formalnie i uprzejmie (forma grzecznościowa: "Państwo", "Szanowni Państwo", "uprzejmie informujemy")
+- Zachowaj formę zwrotu grzecznościowego na początku, jeśli już tam jest — w przeciwnym razie dodaj odpowiedni ("Szanowni Państwo," lub podobny)
+- Nie zmieniaj faktów, liczb, nazw ani instrukcji zawartych w oryginalnym tekście
+- Nie dodawaj podpisu ani nowych informacji, których nie było w oryginale
+- Zwróć TYLKO przeformułowaną treść, bez komentarzy i bez nagłówków`,
+        },
+        { role: 'user', content: `Temat zgłoszenia: ${subject}\n\nTreść do sformalizowania:\n${tresc.slice(0, 3000)}` },
+      ],
+      temperature: 0.3,
+      max_tokens: 700,
+    });
+
+    return chat.choices[0]?.message?.content?.trim() || null;
+  } catch (err) {
+    console.error('[Groq] Błąd formalizowania odpowiedzi:', err.message);
+    return null;
+  }
+}
+
 async function generatePublicReply({ subject = '', body = '', kategoria = '', attachmentNames = [], images = [] }) {
   const client = getClient();
   if (!client) return null;
@@ -243,4 +276,4 @@ Zasady:
   }
 }
 
-module.exports = { classifyTicket, classifyAndSave, generateReply, generatePublicReply };
+module.exports = { classifyTicket, classifyAndSave, generateReply, generatePublicReply, formalizeReply };

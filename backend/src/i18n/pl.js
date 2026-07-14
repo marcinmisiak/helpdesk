@@ -16,6 +16,7 @@ module.exports = {
   subject_unassigned_from: '[{appName}] Usunięto Cię z przypisanych do zgłoszenia #{numer}',
   subject_closed_by_requester: '[{appName}] Zgłoszenie #{numer} zamknięte przez zgłaszającego',
   subject_internal_note: '[{appName}] Nowa notatka wewnętrzna w zgłoszeniu #{numer}',
+  subject_customer_reply_email: '[{appName}] Nowa odpowiedź od zgłaszającego w zgłoszeniu #{numer}',
   subject_reset_password: 'Resetowanie hasła — {appName}',
 
   // Treści maili

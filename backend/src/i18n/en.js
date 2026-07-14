@@ -16,6 +16,7 @@ module.exports = {
   subject_unassigned_from: '[{appName}] You have been removed from ticket #{numer}',
   subject_closed_by_requester: '[{appName}] Ticket #{numer} closed by requester',
   subject_internal_note: '[{appName}] New internal note on ticket #{numer}',
+  subject_customer_reply_email: '[{appName}] New reply from requester on ticket #{numer}',
   subject_reset_password: 'Password reset — {appName}',
 
   // Email body

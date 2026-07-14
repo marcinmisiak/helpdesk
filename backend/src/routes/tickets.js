@@ -11,7 +11,7 @@ const { t: tr, resolveLang } = require('../i18n/index');
 const { notifyAllAdmins, notifyUsers } = require('../utils/webpush');
 const { getSiteUrl } = require('../utils/siteUrl');
 const { normalizePriority, computeDeadlines, enrichTicketSla } = require('../utils/sla');
-const { classifyAndSave, generateReply } = require('../utils/groqClassifier');
+const { classifyAndSave, generateReply, formalizeReply } = require('../utils/groqClassifier');
 const { extractEmail, rememberSenderStatus } = require('../utils/spamBlocklist');
 const { maybeSendCsatSurvey } = require('../utils/csat');
 const { sendTicketReply } = require('../utils/ticketReply');
@@ -1590,6 +1590,27 @@ router.post('/:id/ai-reply', async (req, res) => {
 
     if (!suggestion) return res.status(503).json({ error: 'Groq niedostępne lub brak klucza API' });
     res.json({ suggestion });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/tickets/:id/formalize-reply — nadaj oficjalny ton wpisanej odpowiedzi
+router.post('/:id/formalize-reply', async (req, res) => {
+  try {
+    const { tresc } = req.body;
+    if (!tresc?.trim()) return res.status(400).json({ error: 'Brak treści do sformalizowania' });
+
+    const [[ticket]] = await pool.query(
+      'SELECT message_subject FROM ticket WHERE id = ?',
+      [req.params.id]
+    );
+    if (!ticket) return res.status(404).json({ error: 'Nie znaleziono' });
+
+    const formalized = await formalizeReply({ tresc, subject: ticket.message_subject });
+
+    if (!formalized) return res.status(503).json({ error: 'Groq niedostępne lub brak klucza API' });
+    res.json({ formalized });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -16,6 +16,7 @@ module.exports = {
   subject_unassigned_from: '[{appName}] Вас видалено із заявки #{numer}',
   subject_closed_by_requester: '[{appName}] Заявку #{numer} закрито заявником',
   subject_internal_note: '[{appName}] Нова внутрішня нотатка до заявки #{numer}',
+  subject_customer_reply_email: '[{appName}] Нова відповідь від заявника у заявці #{numer}',
   subject_reset_password: 'Скидання пароля — {appName}',
 
   // Email body

@@ -194,6 +194,7 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
   const [closeNotify, setCloseNotify] = useState(true);
   const [sending, setSending] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [formalizing, setFormalizing] = useState(false);
   const [files, setFiles] = useState([]);
 
   const { data: templates } = useQuery({
@@ -261,6 +262,20 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
     }
   };
 
+  const formalizeAi = async () => {
+    if (!tresc.trim()) return toast.error(t('ticket_view.toast_ai_formalize_empty'));
+    setFormalizing(true);
+    try {
+      const { data } = await api.post(`/tickets/${ticket.id}/formalize-reply`, { tresc });
+      setTresc(data.formalized);
+      toast.success(t('ticket_view.toast_ai_formalized'));
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('ticket_view.toast_ai_error'));
+    } finally {
+      setFormalizing(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-2xl border dark:border-gray-800">
@@ -305,6 +320,14 @@ function OdpowiedzModal({ ticket, onClose, onSuccess }) {
                   title={t('ticket_view.reply_ai_suggest')}
                 >
                   {aiLoading ? `⏳ ${t('ticket_view.reply_ai_loading')}` : `🤖 ${t('ticket_view.reply_ai_suggest')}`}
+                </button>
+                <button
+                  onClick={formalizeAi}
+                  disabled={formalizing || !tresc}
+                  className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 flex items-center gap-1 disabled:opacity-50"
+                  title={t('ticket_view.reply_ai_formalize')}
+                >
+                  {formalizing ? `⏳ ${t('ticket_view.reply_ai_formalizing')}` : `🎩 ${t('ticket_view.reply_ai_formalize')}`}
                 </button>
               </div>
             </div>
@@ -1033,15 +1056,21 @@ export default function TicketView() {
             )}
           </div>
           <div className="space-y-4">
-            {korespondencja.map(k => (
+            {korespondencja.map((k, idx) => (
               <KorespondencjaItem
                 key={k.id}
                 k={k}
                 isAdmin={isAdmin}
+                defaultExpanded={idx === korespondencja.length - 1}
                 onRead={() => qc.invalidateQueries(['ticket', id])}
                 onRefresh={() => qc.invalidateQueries(['ticket', id])}
               />
             ))}
+          </div>
+          <div className="mt-4">
+            <button onClick={() => setModal('odpowiedz')} className="btn-primary">
+              {t('ticket_view.reply')}
+            </button>
           </div>
         </div>
       )}
@@ -1082,13 +1111,20 @@ export default function TicketView() {
   );
 }
 
-function KorespondencjaItem({ k, onRead, onRefresh, isAdmin }) {
+function KorespondencjaItem({ k, onRead, onRefresh, isAdmin, defaultExpanded = false }) {
   const { t } = useTranslation();
   const locale = useDateLocale();
-  const [expanded, setExpanded] = useState(false);
-  const [przeczytane, setPrzeczytane] = useState(!!k.przeczytane);
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [przeczytane, setPrzeczytane] = useState(!!k.przeczytane || defaultExpanded);
   const [redacting, setRedacting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (defaultExpanded && !k.przeczytane) {
+      api.patch(`/korespondencja/${k.id}/przeczytane`).then(() => onRead?.()).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const TYP_CONFIG = {
     forward: {
