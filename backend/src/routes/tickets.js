@@ -49,7 +49,7 @@ router.use(authenticate, requireWorker);
 // GET /api/tickets - lista ticketów
 router.get('/', async (req, res) => {
   try {
-    const { status, odlozone, moje, page = 1, limit = 20, q, priority, przypisany, data_od, data_do, zrodlo } = req.query;
+    const { status, odlozone, moje, page = 1, limit = 20, q, priority, przypisany, zespol, data_od, data_do, zrodlo } = req.query;
     const offset = (page - 1) * limit;
     const params = [];
     let where = "(t.ai_tag != 'spam' OR t.ai_tag IS NULL)";
@@ -92,6 +92,11 @@ router.get('/', async (req, res) => {
     if (przypisany) {
       where += ' AND EXISTS (SELECT 1 FROM user_has_ticket x WHERE x.ticket_id = t.id AND x.user_id = ?)';
       params.push(parseInt(przypisany));
+    }
+
+    if (zespol) {
+      where += ' AND EXISTS (SELECT 1 FROM zespol_has_ticket zhf WHERE zhf.ticket_id = t.id AND zhf.zespol_id = ?)';
+      params.push(parseInt(zespol));
     }
 
     if (data_od) {

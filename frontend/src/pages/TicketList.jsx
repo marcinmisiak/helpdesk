@@ -140,7 +140,7 @@ export default function TicketList({ title, queryParams = {} }) {
   const [selected, setSelected] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
   const qc = useQueryClient();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
 
   const resolvedTitle = title || t('nav.tickets');
 
@@ -163,13 +163,14 @@ export default function TicketList({ title, queryParams = {} }) {
     status: searchParams.get('status') || '',
     priority: searchParams.get('priority') || '',
     przypisany: searchParams.get('przypisany') || '',
+    zespol: searchParams.get('zespol') || '',
     data_od: searchParams.get('data_od') || '',
     data_do: searchParams.get('data_do') || '',
   });
   const [draftFilters, setDraftFilters] = useState(filters);
 
   const activeFilterCount = [
-    filters.status, filters.priority, filters.przypisany, filters.data_od, filters.data_do
+    filters.status, filters.priority, filters.przypisany, filters.zespol, filters.data_od, filters.data_do
   ].filter(Boolean).length;
 
   const { data: users } = useQuery({
@@ -181,7 +182,6 @@ export default function TicketList({ title, queryParams = {} }) {
   const { data: zespoly } = useQuery({
     queryKey: ['zespoly'],
     queryFn: () => api.get('/zespoly').then(r => r.data.data),
-    enabled: isAdmin,
   });
 
   const { data: kategorie } = useQuery({
@@ -198,6 +198,7 @@ export default function TicketList({ title, queryParams = {} }) {
     if (f.status) p.status = f.status;
     if (f.priority) p.priority = f.priority;
     if (f.przypisany) p.przypisany = f.przypisany;
+    if (f.zespol) p.zespol = f.zespol;
     if (f.data_od) p.data_od = dateToTs(f.data_od);
     if (f.data_do) {
       const d = new Date(f.data_do);
@@ -213,25 +214,49 @@ export default function TicketList({ title, queryParams = {} }) {
     refetchInterval: 30000,
   });
 
-  const applyFilters = () => {
-    setFilters(draftFilters);
-    const next = new URLSearchParams();
-    next.set('page', '1');
-    if (draftFilters.q) next.set('q', draftFilters.q);
-    if (draftFilters.status) next.set('status', draftFilters.status);
-    if (draftFilters.priority) next.set('priority', draftFilters.priority);
-    if (draftFilters.przypisany) next.set('przypisany', draftFilters.przypisany);
-    if (draftFilters.data_od) next.set('data_od', draftFilters.data_od);
-    if (draftFilters.data_do) next.set('data_do', draftFilters.data_do);
-    setSearchParams(next);
+  const commitFilters = (next) => {
+    setFilters(next);
+    setDraftFilters(next);
+    const params = new URLSearchParams();
+    params.set('page', '1');
+    if (next.q) params.set('q', next.q);
+    if (next.status) params.set('status', next.status);
+    if (next.priority) params.set('priority', next.priority);
+    if (next.przypisany) params.set('przypisany', next.przypisany);
+    if (next.zespol) params.set('zespol', next.zespol);
+    if (next.data_od) params.set('data_od', next.data_od);
+    if (next.data_do) params.set('data_do', next.data_do);
+    setSearchParams(params);
   };
 
+  const applyFilters = () => commitFilters(draftFilters);
+
   const resetFilters = () => {
-    const blank = { q: '', status: '', priority: '', przypisany: '', data_od: '', data_do: '' };
-    setDraftFilters(blank);
-    setFilters(blank);
-    setSearchParams(new URLSearchParams({ page: '1' }));
+    commitFilters({ q: '', status: '', priority: '', przypisany: '', zespol: '', data_od: '', data_do: '' });
   };
+
+  const toggleTeamFilter = (zespolId) => {
+    const id = String(zespolId);
+    commitFilters({ ...filters, zespol: filters.zespol === id ? '' : id });
+  };
+
+  const myTeams = (zespoly || []).filter(
+    z => user?.id != null && (z.czlonkowie_ids || '').split(',').includes(String(user.id))
+  );
+
+  const defaultTeamApplied = useRef(false);
+  useEffect(() => {
+    if (defaultTeamApplied.current || !zespoly) return;
+    defaultTeamApplied.current = true;
+    const hasFilterParams = ['q', 'status', 'priority', 'przypisany', 'zespol', 'data_od', 'data_do']
+      .some(k => searchParams.get(k));
+    if (hasFilterParams) return;
+    if (myTeams.length === 1) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- default derived from async-loaded team membership, not local render state
+      toggleTeamFilter(myTeams[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zespoly]);
 
   const bulkClose = useMutation({
     mutationFn: (ids) => api.post('/tickets/masowe', { ids }),
@@ -333,6 +358,15 @@ export default function TicketList({ title, queryParams = {} }) {
           {total > 0 && <span className="ml-2 text-sm font-normal text-gray-500">({total})</span>}
         </h2>
         <div className="flex items-center gap-2">
+          {myTeams.map(z => (
+            <button
+              key={z.id}
+              onClick={() => toggleTeamFilter(z.id)}
+              className={`btn-secondary flex items-center gap-1 ${filters.zespol === String(z.id) ? 'ring-2 ring-blue-400 bg-blue-50 dark:bg-blue-900/30' : ''}`}
+            >
+              {t('ticket_list.team_button', { name: z.nazwa })}
+            </button>
+          ))}
           <button
             onClick={() => { setShowFilters(v => !v); if (!showFilters) setDraftFilters(filters); }}
             className={`btn-secondary flex items-center gap-1 ${activeFilterCount ? 'ring-2 ring-blue-400' : ''}`}
@@ -436,6 +470,19 @@ export default function TicketList({ title, queryParams = {} }) {
               </div>
             )}
             <div>
+              <label className="label">{t('ticket_list.filter_team')}</label>
+              <select
+                value={draftFilters.zespol}
+                onChange={e => setDraftFilters(f => ({ ...f, zespol: e.target.value }))}
+                className="input"
+              >
+                <option value="">{t('ticket_list.team_all')}</option>
+                {zespoly?.map(z => (
+                  <option key={z.id} value={z.id}>{z.nazwa}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="label">{t('ticket_list.filter_date_from')}</label>
               <input
                 type="date"
@@ -475,6 +522,11 @@ export default function TicketList({ title, queryParams = {} }) {
           {filters.przypisany && (
             <span className="badge-blue">
               {t('ticket_list.filter_label_assigned')}: {users?.find(u => String(u.id) === filters.przypisany)?.imie || filters.przypisany}
+            </span>
+          )}
+          {filters.zespol && (
+            <span className="badge-blue">
+              {t('ticket_list.filter_label_team')}: {zespoly?.find(z => String(z.id) === filters.zespol)?.nazwa || filters.zespol}
             </span>
           )}
           {filters.data_od && <span className="badge-blue">{t('ticket_list.filter_label_from')}: {filters.data_od}</span>}
