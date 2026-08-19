@@ -2,6 +2,7 @@
   "nav": {
     "tickets": "Tickets",
     "my_tickets": "My Tickets",
+    "my_teams": "My Teams",
     "deferred": "Deferred",
     "calendar": "Calendar",
     "statistics": "Statistics",
@@ -293,6 +294,9 @@
   "users": {
     "title": "Users",
     "add_user": "+ New User",
+    "ooo_badge": "Out of office",
+    "ooo_badge_until": "out of office until {{date}}",
+    "ooo_filter": "Out of office ({{count}})",
     "search_placeholder": "Search by name or email...",
     "loading": "Loading...",
     "col_name": "Full Name",
@@ -340,7 +344,20 @@
   },
   "profile": {
     "avatar_updated": "Profile photo updated",
-    "avatar_error": "Failed to save photo"
+    "avatar_error": "Failed to save photo",
+    "ooo_set": "Set out of office",
+    "ooo_active_until": "Out of office until {{date}}",
+    "ooo_title": "Out of office",
+    "ooo_from": "From",
+    "ooo_to": "To",
+    "ooo_reason": "Reason (optional)",
+    "ooo_reason_placeholder": "e.g. annual leave",
+    "ooo_clear": "Clear out of office",
+    "ooo_saved": "Out of office saved",
+    "ooo_cleared": "Out of office cleared",
+    "ooo_error_dates": "Please provide both dates",
+    "ooo_error_order": "Start date cannot be after end date",
+    "ooo_synced_hint": "This period was loaded automatically from Microsoft (Automatic Replies). Saving changes here will replace it with a manual entry."
   },
   "templates": {
     "title": "Reply Templates",
@@ -751,6 +768,8 @@
     "assign_worker": "Worker",
     "assign_choose": "-- select --",
     "assign_error": "Select a user",
+    "assign_ooo_badge": "(out of office)",
+    "assign_ooo_confirm": "{{name}} is marked out of office. Assign anyway?",
     "assign_team_label": "Team",
     "assign_team_choose": "-- select team --",
     "assign_team_error": "Select a team",

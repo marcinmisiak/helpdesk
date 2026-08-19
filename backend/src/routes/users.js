@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const { authenticate, requireAdmin, requireWorker } = require('../middleware/auth');
 const { saveAvatarFromBuffer, deleteAvatar } = require('../utils/avatar');
+const { OUT_OF_OFFICE_ACTIVE_SQL, isOutOfOfficeActive } = require('../utils/outOfOffice');
 
 const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -18,14 +19,16 @@ router.get('/', requireWorker, async (req, res) => {
     const [rows] = await pool.query(
       `SELECT u.id, u.email, u.imie, u.nazwisko, u.status, u.avatar_path,
               u.powiadom_nowy_ticket, u.powiadom_korespondencja,
+              u.poza_biurem_od, u.poza_biurem_do, u.poza_biurem_powod, u.poza_biurem_zrodlo,
               aa.item_name as rola,
-              CASE WHEN up.last_seen_at > ? THEN 1 ELSE 0 END as is_online
+              CASE WHEN up.last_seen_at > ? THEN 1 ELSE 0 END as is_online,
+              CASE WHEN ${OUT_OF_OFFICE_ACTIVE_SQL} THEN 1 ELSE 0 END as poza_biurem_aktywne
        FROM user u
        LEFT JOIN auth_assignment aa ON aa.user_id = u.id
        LEFT JOIN user_presence up ON up.user_id = u.id
        WHERE u.status = 10
        ORDER BY u.nazwisko, u.imie`,
-      [now - 3 * 60]
+      [now - 3 * 60, now]
     );
     res.json({ data: rows });
   } catch (err) {
@@ -39,6 +42,7 @@ router.get('/:id', requireAdmin, async (req, res) => {
     const [[user]] = await pool.query(
       `SELECT u.id, u.email, u.imie, u.nazwisko, u.status, u.avatar_path,
               u.powiadom_nowy_ticket, u.powiadom_korespondencja,
+              u.poza_biurem_od, u.poza_biurem_do, u.poza_biurem_powod, u.poza_biurem_zrodlo,
               aa.item_name as rola
        FROM user u
        LEFT JOIN auth_assignment aa ON aa.user_id = u.id
@@ -125,6 +129,7 @@ router.post('/:id/impersonate', requireAdmin, async (req, res) => {
     const [[target]] = await pool.query(
       `SELECT u.id, u.email, u.imie, u.nazwisko, u.status, u.avatar_path,
               u.powiadom_nowy_ticket, u.powiadom_korespondencja,
+              u.poza_biurem_od, u.poza_biurem_do, u.poza_biurem_powod, u.poza_biurem_zrodlo,
               aa.item_name as rola,
               (SELECT GROUP_CONCAT(zespol_id) FROM zespol_user WHERE user_id = u.id AND is_kierownik = 1) as kierownik_zespol_ids_raw
        FROM user u
@@ -155,6 +160,11 @@ router.post('/:id/impersonate', requireAdmin, async (req, res) => {
         avatar_path: target.avatar_path,
         powiadom_nowy_ticket: target.powiadom_nowy_ticket,
         powiadom_korespondencja: target.powiadom_korespondencja,
+        poza_biurem_od: target.poza_biurem_od,
+        poza_biurem_do: target.poza_biurem_do,
+        poza_biurem_powod: target.poza_biurem_powod,
+        poza_biurem_zrodlo: target.poza_biurem_zrodlo,
+        poza_biurem_aktywne: isOutOfOfficeActive(target.poza_biurem_od, target.poza_biurem_do),
         kierownik_zespol_ids: target.kierownik_zespol_ids_raw ? target.kierownik_zespol_ids_raw.split(',').map(Number) : [],
       },
     });
@@ -172,6 +182,40 @@ router.put('/me/preferences', async (req, res) => {
       [powiadom_nowy_ticket, powiadom_korespondencja, req.user.id]
     );
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/users/me/poza-biurem - moja nieobecność (urlop/przerwa); wysłanie od=null, do=null czyści
+router.put('/me/poza-biurem', async (req, res) => {
+  try {
+    const { od, do: doTs, powod } = req.body;
+    const odVal = od != null ? Number(od) : null;
+    const doVal = doTs != null ? Number(doTs) : null;
+    if ((odVal == null) !== (doVal == null)) {
+      return res.status(400).json({ error: 'Podaj obie daty (od i do) albo żadną' });
+    }
+    if (odVal != null && doVal != null && odVal > doVal) {
+      return res.status(400).json({ error: 'Data początku nie może być późniejsza niż data końca' });
+    }
+    // Ręczna edycja zawsze wygrywa z synchronizacją Microsoft — zrodlo='reczne' blokuje oooSync.js
+    // przed nadpisaniem tego wiersza, dopóki użytkownik sam go nie wyczyści (zrodlo=NULL odblokowuje
+    // ponowne uzupełnienie z Microsoft przy kolejnym cyklu synchronizacji).
+    const savedPowod = odVal != null ? (powod || null) : null;
+    const zrodlo = odVal != null ? 'reczne' : null;
+    await pool.query(
+      'UPDATE user SET poza_biurem_od=?, poza_biurem_do=?, poza_biurem_powod=?, poza_biurem_zrodlo=? WHERE id=?',
+      [odVal, doVal, savedPowod, zrodlo, req.user.id]
+    );
+    res.json({
+      success: true,
+      poza_biurem_od: odVal,
+      poza_biurem_do: doVal,
+      poza_biurem_powod: savedPowod,
+      poza_biurem_zrodlo: zrodlo,
+      poza_biurem_aktywne: isOutOfOfficeActive(odVal, doVal),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

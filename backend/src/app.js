@@ -6,6 +6,7 @@ const runMigrations = require('./utils/migrations');
 const { ensureSlaSchema } = require('./utils/sla');
 const { startSlaScheduler } = require('./utils/slaScheduler');
 const { start: startReminderScheduler } = require('./utils/reminderScheduler');
+const { start: startOooSync } = require('./utils/oooSync');
 
 const app = express();
 
@@ -84,6 +85,7 @@ async function boot() {
     require('./utils/imapPoller').start(60000);
     startSlaScheduler();
     startReminderScheduler();
+    startOooSync();
   });
 }
 

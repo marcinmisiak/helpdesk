@@ -5,6 +5,7 @@ const msGraph = require('./msGraphClient');
 const { getSiteUrl } = require('./siteUrl');
 const { t, resolveLang, getAppLang } = require('../i18n/index');
 const { extractEmail } = require('./spamBlocklist');
+const { OUT_OF_OFFICE_ACTIVE_SQL } = require('./outOfOffice');
 
 async function getSettings() {
   const [[s]] = await pool.query('SELECT * FROM ustawienia WHERE id = 1');
@@ -314,12 +315,15 @@ async function notifyChannelNewTicket({ ticketId, numer, from, subject, source, 
     const ONLINE_THRESHOLD = 3 * 60;
     const now = Math.floor(Date.now() / 1000);
     try {
+      // Osoby aktualnie "poza biurem" nie liczą się jako obecność zespołu — ich sesja może
+      // technicznie wciąż mieć niewygasły last_seen_at, ale nie są dostępne do obsługi zgłoszeń.
       const [online] = await pool.query(
         `SELECT 1 FROM user_presence up
          JOIN zespol_user zu ON zu.user_id = up.user_id
-         WHERE zu.zespol_id = ? AND up.last_seen_at > ?
+         JOIN user u ON u.id = up.user_id
+         WHERE zu.zespol_id = ? AND up.last_seen_at > ? AND NOT (${OUT_OF_OFFICE_ACTIVE_SQL})
          LIMIT 1`,
-        [zespolId, now - ONLINE_THRESHOLD]
+        [zespolId, now - ONLINE_THRESHOLD, now]
       );
       if (online.length > 0) return;
     } catch {}
@@ -385,9 +389,10 @@ async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source, z
       const [online] = await pool.query(
         `SELECT 1 FROM user_presence up
          JOIN auth_assignment aa ON aa.user_id = up.user_id
-         WHERE aa.item_name = 'admin' AND up.last_seen_at > ?
+         JOIN user u ON u.id = up.user_id
+         WHERE aa.item_name = 'admin' AND up.last_seen_at > ? AND NOT (${OUT_OF_OFFICE_ACTIVE_SQL})
          LIMIT 1`,
-        [now - ONLINE_THRESHOLD]
+        [now - ONLINE_THRESHOLD, now]
       );
       if (online.length > 0) return;
     } catch {}

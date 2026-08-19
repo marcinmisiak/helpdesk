@@ -171,6 +171,30 @@ async function getUnreadMessages(settings) {
   return data.value || [];
 }
 
+// Odczytuje "Odpowiedzi automatyczne" (Outlook OOF) danego użytkownika — to samo pole, które
+// zapisuje zarówno klasyczny Outlook, jak i "Zaplanuj nieobecność" w Teams. Wymaga uprawnienia
+// aplikacyjnego MailboxSettings.Read (osobno od Mail.Send/Mail.ReadWrite używanych do wysyłki).
+// Prefer: outlook.timezone="UTC" wymusza zwrot scheduledStart/EndDateTime w UTC, żeby nie trzeba
+// było przeliczać strefy czasowej podanej w polu timeZone samodzielnie.
+async function getAutomaticReplies(settings, email) {
+  const token = await getAccessToken(settings);
+
+  const res = await fetch(
+    `${GRAPH_BASE}/users/${encodeURIComponent(email)}/mailboxSettings?$select=automaticRepliesSetting`,
+    { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="UTC"' } }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const error = new Error(err.error?.message || `Graph getAutomaticReplies error ${res.status}`);
+    error.status = res.status;
+    throw error;
+  }
+
+  const data = await res.json();
+  return data.automaticRepliesSetting || null;
+}
+
 async function markAsRead(settings, graphMessageId) {
   const token = await getAccessToken(settings);
   const mailbox = settings.ms_graph_mailbox;
@@ -303,4 +327,4 @@ async function deleteMessage(settings, graphMessageId) {
   }
 }
 
-module.exports = { getAccessToken, sendMail, getUnreadMessages, markAsRead, deleteMessage, getAttachments, getMailboxStats, getOldMessages, invalidateToken };
+module.exports = { getAccessToken, sendMail, getUnreadMessages, markAsRead, deleteMessage, getAttachments, getMailboxStats, getOldMessages, getAutomaticReplies, invalidateToken };

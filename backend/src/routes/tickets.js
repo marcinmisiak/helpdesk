@@ -49,7 +49,7 @@ router.use(authenticate, requireWorker);
 // GET /api/tickets - lista ticketów
 router.get('/', async (req, res) => {
   try {
-    const { status, odlozone, moje, page = 1, limit = 20, q, priority, przypisany, zespol, data_od, data_do, zrodlo } = req.query;
+    const { status, odlozone, moje, moje_zespoly, page = 1, limit = 20, q, priority, przypisany, zespol, data_od, data_do, zrodlo } = req.query;
     const offset = (page - 1) * limit;
     const params = [];
     let where = "(t.ai_tag != 'spam' OR t.ai_tag IS NULL)";
@@ -76,6 +76,14 @@ router.get('/', async (req, res) => {
                       OR (NOT EXISTS (SELECT 1 FROM user_has_ticket x2 WHERE x2.ticket_id = t.id)
                           AND EXISTS (SELECT 1 FROM zespol_has_ticket zht_m JOIN zespol_user zu_m ON zu_m.zespol_id = zht_m.zespol_id WHERE zht_m.ticket_id = t.id AND zu_m.user_id = ?)))`;
       params.push(req.user.id, req.user.id);
+    }
+
+    if (moje_zespoly === '1') {
+      // "Moje zespoły" = wszystkie tickety przydzielone zespołowi/zespołom, których jestem
+      // członkiem, niezależnie od tego, czy są indywidualnie przydzielone (do mnie czy do kogoś
+      // innego) — w odróżnieniu od "moje", które w puli zespołowej pokazuje tylko nieprzydzielone.
+      where += ' AND EXISTS (SELECT 1 FROM zespol_has_ticket zht_mz JOIN zespol_user zu_mz ON zu_mz.zespol_id = zht_mz.zespol_id WHERE zht_mz.ticket_id = t.id AND zu_mz.user_id = ?)';
+      params.push(req.user.id);
     }
 
     if (priority) {

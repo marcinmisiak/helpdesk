@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
+const { isOutOfOfficeActive } = require('../utils/outOfOffice');
 
 async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -12,6 +13,7 @@ async function authenticate(req, res, next) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const [rows] = await pool.query(
       `SELECT u.id, u.email, u.imie, u.nazwisko, u.status, u.language, u.avatar_path, aa.item_name as rola,
+              u.poza_biurem_od, u.poza_biurem_do, u.poza_biurem_powod, u.poza_biurem_zrodlo,
               (SELECT GROUP_CONCAT(zespol_id) FROM zespol_user WHERE user_id = u.id AND is_kierownik = 1) as kierownik_zespol_ids_raw
        FROM user u LEFT JOIN auth_assignment aa ON aa.user_id = u.id WHERE u.id = ?`,
       [decoded.id]
@@ -20,6 +22,7 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ error: 'Nieaktywny użytkownik' });
     }
     const user = rows[0];
+    user.poza_biurem_aktywne = isOutOfOfficeActive(user.poza_biurem_od, user.poza_biurem_do);
     user.kierownik_zespol_ids = user.kierownik_zespol_ids_raw
       ? user.kierownik_zespol_ids_raw.split(',').map(Number)
       : [];

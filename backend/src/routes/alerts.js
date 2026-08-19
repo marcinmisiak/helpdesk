@@ -96,6 +96,21 @@ router.get('/count', async (req, res) => {
          AND ${MINE_OR_TEAM_POOL}`,
       [req.user.id, req.user.id]
     );
+    // "Moje zespoły" w menu: pełna pula ticketów zespołu/zespołów użytkownika, w rozbiciu
+    // nowe/w toku, niezależnie od indywidualnego przydziału (patrz moje_zespoly w tickets.js).
+    const TEAM_POOL = `EXISTS (SELECT 1 FROM zespol_has_ticket zht_t JOIN zespol_user zu_t ON zu_t.zespol_id = zht_t.zespol_id WHERE zht_t.ticket_id = t.id AND zu_t.user_id = ?)`;
+    const [[zespolyNowe]] = await pool.query(
+      `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
+       WHERE t.status = 1 AND (t.odlozony = 0 OR t.odlozony IS NULL)
+         AND ${TEAM_POOL}`,
+      [req.user.id]
+    );
+    const [[zespolyWtoku]] = await pool.query(
+      `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
+       WHERE t.status = 2 AND (t.odlozony = 0 OR t.odlozony IS NULL)
+         AND ${TEAM_POOL}`,
+      [req.user.id]
+    );
     const [[odloz]] = await pool.query('SELECT COUNT(*) as cnt FROM ticket WHERE odlozony = 1');
     const [[mojeOdloz]] = await pool.query(
       `SELECT COUNT(DISTINCT t.id) as cnt FROM ticket t
@@ -187,6 +202,7 @@ router.get('/count', async (req, res) => {
 
     res.json({
       nowe: nowe.cnt, wtoku: wtoku.cnt, moje: moje.cnt, zespolowe: zespolowe.cnt, czaty: czatyNowe.cnt + czatyWtoku.cnt, czatyNowe: czatyNowe.cnt, czatyWtoku: czatyWtoku.cnt, odlozone: odloz.cnt, mojeOdlozone: mojeOdloz.cnt,
+      zespolyNowe: zespolyNowe.cnt, zespolyWtoku: zespolyWtoku.cnt,
       alerts: alertCount, spam: spamCount, opinie: opinieCount,
       last_ticket_at: newest.ts || 0,
       last_reply_at: lastReplyAt,

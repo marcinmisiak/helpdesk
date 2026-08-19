@@ -14,6 +14,7 @@ import TicketList from './pages/TicketList';
 import TicketView from './pages/TicketView';
 import TicketNew from './pages/TicketNew';
 import MojeTickety from './pages/MojeTickety';
+import MojeZespoly from './pages/MojeZespoly';
 import Odlozone from './pages/Odlozone';
 import Kalendarz from './pages/Kalendarz';
 import Statystyki from './pages/Statystyki';
@@ -72,6 +73,11 @@ function AppRoutes() {
       <Route path="/moje" element={
         <ProtectedRoute>
           <Layout><MojeTickety /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/moje-zespoly" element={
+        <ProtectedRoute>
+          <Layout><MojeZespoly /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/czaty" element={

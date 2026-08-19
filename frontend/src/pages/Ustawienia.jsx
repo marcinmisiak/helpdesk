@@ -693,6 +693,26 @@ function MsGraphPanel({ form, set, setCheck }) {
           </p>
         </div>
 
+        <div className="pt-2 border-t dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="ms_graph_sync_ooo"
+              checked={!!form.ms_graph_sync_ooo}
+              onChange={setCheck('ms_graph_sync_ooo')}
+            />
+            <label htmlFor="ms_graph_sync_ooo" className="text-sm font-medium">
+              Synchronizuj "poza biurem" z Microsoft
+            </label>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Co 30 minut wczytuje zaplanowane "Odpowiedzi automatyczne" (Outlook / Teams "Zaplanuj nieobecność")
+            każdego pracownika i uzupełnia jego okres nieobecności — ręcznie ustawiony okres (w menu bocznym) nie jest nadpisywany.
+            Wymaga dodatkowego uprawnienia aplikacyjnego{' '}
+            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">MailboxSettings.Read</code> z Admin Consent.
+          </p>
+        </div>
+
         <div className="pt-1 flex items-center gap-3 flex-wrap">
           <button
             type="button"
@@ -713,7 +733,7 @@ function MsGraphPanel({ form, set, setCheck }) {
           <strong>Konfiguracja w Azure AD:</strong>
           <ol className="mt-1 ml-4 list-decimal space-y-0.5">
             <li>Azure Active Directory → Rejestracje aplikacji → Nowa rejestracja</li>
-            <li>Uprawnienia API → Microsoft Graph → Uprawnienia aplikacji → <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">Mail.Send</code> + <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">Mail.ReadWrite</code></li>
+            <li>Uprawnienia API → Microsoft Graph → Uprawnienia aplikacji → <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">Mail.Send</code> + <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">Mail.ReadWrite</code> (+ <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">MailboxSettings.Read</code> jeśli włączasz synchronizację "poza biurem" poniżej)</li>
             <li>Udziel zgody administratora (Grant admin consent)</li>
             <li>Certyfikaty i wpisy tajne → Nowy wpis tajny (Client Secret)</li>
           </ol>

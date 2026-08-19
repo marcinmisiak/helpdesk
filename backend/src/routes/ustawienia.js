@@ -130,7 +130,7 @@ router.put('/', requireAdmin, async (req, res) => {
       'kontakt_telefony', 'kontakt_emaile',
       // Microsoft Graph
       'ms_graph_enabled', 'ms_graph_client_id', 'ms_graph_client_secret',
-      'ms_graph_tenant_id', 'ms_graph_mailbox',
+      'ms_graph_tenant_id', 'ms_graph_mailbox', 'ms_graph_sync_ooo',
       // Skrzynka
       'clean_mailbox', 'clean_mailbox_days',
       // Przetwarzanie poczty

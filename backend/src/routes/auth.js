@@ -9,6 +9,7 @@ const { authenticate } = require('../middleware/auth');
 const { sendNotification, getAppName } = require('../utils/mailer');
 const { t: tr, resolveLang } = require('../i18n/index');
 const { saveAvatarFromBuffer } = require('../utils/avatar');
+const { isOutOfOfficeActive } = require('../utils/outOfOffice');
 
 // --- Rate limitery ---
 
@@ -82,6 +83,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     const [rows] = await pool.query(
       `SELECT u.id, u.email, u.password, u.imie, u.nazwisko, u.status, u.avatar_path,
               u.powiadom_nowy_ticket, u.powiadom_korespondencja,
+              u.poza_biurem_od, u.poza_biurem_do, u.poza_biurem_powod, u.poza_biurem_zrodlo,
               aa.item_name as rola,
               (SELECT GROUP_CONCAT(zespol_id) FROM zespol_user WHERE user_id = u.id AND is_kierownik = 1) as kierownik_zespol_ids_raw
        FROM user u
@@ -130,6 +132,11 @@ router.post('/login', loginLimiter, async (req, res) => {
         avatar_path: user.avatar_path,
         powiadom_nowy_ticket: user.powiadom_nowy_ticket,
         powiadom_korespondencja: user.powiadom_korespondencja,
+        poza_biurem_od: user.poza_biurem_od,
+        poza_biurem_do: user.poza_biurem_do,
+        poza_biurem_powod: user.poza_biurem_powod,
+        poza_biurem_zrodlo: user.poza_biurem_zrodlo,
+        poza_biurem_aktywne: isOutOfOfficeActive(user.poza_biurem_od, user.poza_biurem_do),
         kierownik_zespol_ids: user.kierownik_zespol_ids_raw ? user.kierownik_zespol_ids_raw.split(',').map(Number) : [],
       },
     });

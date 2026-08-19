@@ -2,6 +2,7 @@
   "nav": {
     "tickets": "Tickety",
     "my_tickets": "Moje zgłoszenia",
+    "my_teams": "Moje zespoły",
     "deferred": "Odłożone",
     "calendar": "Kalendarz",
     "statistics": "Statystyki",
@@ -293,6 +294,9 @@
   "users": {
     "title": "Użytkownicy",
     "add_user": "+ Nowy użytkownik",
+    "ooo_badge": "Poza biurem",
+    "ooo_badge_until": "poza biurem do {{date}}",
+    "ooo_filter": "Poza biurem ({{count}})",
     "search_placeholder": "Szukaj po imieniu, nazwisku lub emailu...",
     "loading": "Ładowanie...",
     "col_name": "Imię i nazwisko",
@@ -340,7 +344,20 @@
   },
   "profile": {
     "avatar_updated": "Zdjęcie profilowe zaktualizowane",
-    "avatar_error": "Nie udało się zapisać zdjęcia"
+    "avatar_error": "Nie udało się zapisać zdjęcia",
+    "ooo_set": "Ustaw nieobecność",
+    "ooo_active_until": "Poza biurem do {{date}}",
+    "ooo_title": "Poza biurem",
+    "ooo_from": "Od",
+    "ooo_to": "Do",
+    "ooo_reason": "Powód (opcjonalnie)",
+    "ooo_reason_placeholder": "np. urlop wypoczynkowy",
+    "ooo_clear": "Usuń nieobecność",
+    "ooo_saved": "Nieobecność zapisana",
+    "ooo_cleared": "Nieobecność usunięta",
+    "ooo_error_dates": "Podaj obie daty",
+    "ooo_error_order": "Data początku nie może być późniejsza niż data końca",
+    "ooo_synced_hint": "Ten okres został wczytany automatycznie z Microsoft (Odpowiedzi automatyczne). Zapisanie zmian tutaj zastąpi go ręcznym wpisem."
   },
   "templates": {
     "title": "Szablony odpowiedzi",
@@ -751,6 +768,8 @@
     "assign_worker": "Pracownik",
     "assign_choose": "-- wybierz --",
     "assign_error": "Wybierz użytkownika",
+    "assign_ooo_badge": "(poza biurem)",
+    "assign_ooo_confirm": "{{name}} jest oznaczony jako poza biurem. Przydzielić mimo to?",
     "assign_team_label": "Zespół",
     "assign_team_choose": "-- wybierz zespół --",
     "assign_team_error": "Wybierz zespół",

@@ -21,6 +21,10 @@ export default function PrzydielModal({ ticketId, onClose, onSuccess }) {
   const assign = async () => {
     if (tab === 'worker') {
       if (!userId) return toast.error(t('ticket_view.assign_error'));
+      const chosen = users?.find(u => String(u.id) === String(userId));
+      if (chosen?.poza_biurem_aktywne && !confirm(t('ticket_view.assign_ooo_confirm', { name: `${chosen.imie} ${chosen.nazwisko}` }))) {
+        return;
+      }
       try {
         await api.post(`/tickets/${ticketId}/przydziel`, { user_id: userId });
         toast.success(t('ticket_view.assign'));
@@ -70,7 +74,9 @@ export default function PrzydielModal({ ticketId, onClose, onSuccess }) {
               <select value={userId} onChange={e => setUserId(e.target.value)} className="input">
                 <option value="">{t('ticket_view.assign_choose')}</option>
                 {users?.filter(u => ['admin', 'pracownik'].includes(u.rola)).map(u => (
-                  <option key={u.id} value={u.id}>{u.imie} {u.nazwisko} ({u.email})</option>
+                  <option key={u.id} value={u.id}>
+                    {u.imie} {u.nazwisko} ({u.email}){u.poza_biurem_aktywne ? ` 🏖️ ${t('ticket_view.assign_ooo_badge')}` : ''}
+                  </option>
                 ))}
               </select>
             </>

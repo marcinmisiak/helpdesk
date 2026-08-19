@@ -11,6 +11,7 @@ import useTheme from '../hooks/useTheme';
 import useNewTicketAlert, { isSoundMuted, toggleSoundMute } from '../hooks/useNewTicketAlert';
 import toast from 'react-hot-toast';
 import Avatar from './Avatar';
+import OutOfOfficeModal from './OutOfOfficeModal';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -76,6 +77,8 @@ export default function Layout({ children }) {
       setAvatarUploading(false);
     }
   };
+  const [oooModalOpen, setOooModalOpen] = useState(false);
+  const isOutOfOffice = !!user?.poza_biurem_aktywne;
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try { return localStorage.getItem('sidebarOpen') !== 'false'; } catch { return true; }
   });
@@ -219,6 +222,10 @@ export default function Layout({ children }) {
       { count: counts?.zespolowe, color: 'red' },
       { count: mojeIndywidualne, color: 'yellow' },
     ]},
+    { to: '/moje-zespoly', label: t('nav.my_teams'), icon: '🧑‍🤝‍🧑', badges: [
+      { count: counts?.zespolyNowe, color: 'red' },
+      { count: counts?.zespolyWtoku, color: 'yellow' },
+    ]},
     { to: '/czaty', label: t('nav.chats'), icon: '💬', badges: [
       { count: counts?.czatyNowe, color: 'red' },
       { count: counts?.czatyWtoku, color: 'yellow' },
@@ -260,6 +267,21 @@ export default function Layout({ children }) {
             <p className="text-xs text-blue-300 capitalize">{user?.rola === 'admin' ? t('nav.role_admin') : t('nav.role_worker')}</p>
           </div>
         </div>
+        <button
+          onClick={() => setOooModalOpen(true)}
+          className={`mt-2 w-full flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-lg transition-colors ${
+            isOutOfOffice
+              ? 'bg-orange-500/20 text-orange-200 hover:bg-orange-500/30'
+              : 'bg-white/5 text-blue-300 hover:bg-white/10 hover:text-white'
+          }`}
+        >
+          <span>🏖️</span>
+          <span className="truncate flex-1 text-left">
+            {isOutOfOffice
+              ? t('profile.ooo_active_until', { date: new Date(user.poza_biurem_do * 1000).toLocaleDateString() })
+              : t('profile.ooo_set')}
+          </span>
+        </button>
         {/* Quick stats */}
         <div className="mt-3 grid grid-cols-3 gap-1 text-center">
           {isAdmin ? (
@@ -480,6 +502,13 @@ export default function Layout({ children }) {
           </footer>
         </div>
       </div>
+      {oooModalOpen && (
+        <OutOfOfficeModal
+          user={user}
+          onClose={() => setOooModalOpen(false)}
+          onSaved={updateUser}
+        />
+      )}
     </div>
   );
 }

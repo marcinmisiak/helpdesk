@@ -33,6 +33,12 @@ function BulkAssignModal({ count, users, zespoly, onClose, onAssign }) {
   const [pending, setPending] = useState(false);
 
   const submit = async () => {
+    if (tab === 'worker') {
+      const chosen = users?.find(u => String(u.id) === String(userId));
+      if (chosen?.poza_biurem_aktywne && !confirm(t('ticket_view.assign_ooo_confirm', { name: `${chosen.imie} ${chosen.nazwisko}` }))) {
+        return;
+      }
+    }
     setPending(true);
     try {
       await onAssign(tab === 'worker' ? { user_id: userId } : { zespol_id: zespolId });
@@ -68,7 +74,9 @@ function BulkAssignModal({ count, users, zespoly, onClose, onAssign }) {
             <select value={userId} onChange={e => setUserId(e.target.value)} className="input">
               <option value="">{t('ticket_list.bulk_assign_choose_worker')}</option>
               {users?.filter(u => ['admin', 'pracownik'].includes(u.rola)).map(u => (
-                <option key={u.id} value={u.id}>{u.imie} {u.nazwisko}</option>
+                <option key={u.id} value={u.id}>
+                  {u.imie} {u.nazwisko}{u.poza_biurem_aktywne ? ` 🏖️ ${t('ticket_view.assign_ooo_badge')}` : ''}
+                </option>
               ))}
             </select>
           ) : (

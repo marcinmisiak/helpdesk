@@ -151,6 +151,7 @@ export default function Uzytkownicy() {
   const { t } = useTranslation();
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState('');
+  const [oooOnly, setOooOnly] = useState(false);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { user: currentUser, impersonateUser } = useAuth();
@@ -168,15 +169,18 @@ export default function Uzytkownicy() {
     refetchInterval: 15000,
   });
 
-  const users = data || [];
+  const users = useMemo(() => data || [], [data]);
+
+  const oooCount = useMemo(() => users.filter(u => !!u.poza_biurem_aktywne).length, [users]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(u =>
-      `${u.imie} ${u.nazwisko} ${u.email}`.toLowerCase().includes(q)
-    );
-  }, [users, search]);
+    return users.filter(u => {
+      if (oooOnly && !u.poza_biurem_aktywne) return false;
+      if (q && !`${u.imie} ${u.nazwisko} ${u.email}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [users, search, oooOnly]);
 
   const handleImpersonate = async (u) => {
     try {
@@ -193,13 +197,20 @@ export default function Uzytkownicy() {
         <h2 className="text-xl font-semibold">{t('users.title')}</h2>
         <button onClick={() => setModal('new')} className="btn-primary">{t('users.add_user')}</button>
       </div>
-      <div className="mb-3">
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder={t('users.search_placeholder')}
           className="input max-w-sm"
         />
+        <button
+          onClick={() => setOooOnly(v => !v)}
+          disabled={oooCount === 0}
+          className={`btn-secondary flex items-center gap-1 disabled:opacity-40 disabled:cursor-default ${oooOnly ? 'ring-2 ring-blue-400 bg-blue-50 dark:bg-blue-900/30' : ''}`}
+        >
+          🏖️ {t('users.ooo_filter', { count: oooCount })}
+        </button>
       </div>
 
       {isLoading ? (
@@ -228,6 +239,14 @@ export default function Uzytkownicy() {
                         <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" title={t('users.offline')} />
                       )}
                       {u.imie} {u.nazwisko}
+                      {!!u.poza_biurem_aktywne && (
+                        <span
+                          className="badge-yellow"
+                          title={u.poza_biurem_powod || t('users.ooo_badge')}
+                        >
+                          🏖️ {t('users.ooo_badge_until', { date: new Date(u.poza_biurem_do * 1000).toLocaleDateString() })}
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{u.email}</td>
