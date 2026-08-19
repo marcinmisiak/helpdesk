@@ -654,24 +654,19 @@ router.delete('/:id/trwale', requireAdmin, async (req, res) => {
   }
 });
 
-// Przypisanie ticketu do konkretnego pracownika (siebie lub kogoś innego) przenosi ticket
-// do zespołu tego pracownika — jeśli ktoś z zespołu "Wsparcie" przejmuje ticket z kolejki
-// zespołu "Sprzedaż", ticket powinien liczyć się jako zespołu "Wsparcie", nie zostawać
-// "osierocony" w starym zespole. Brak zmiany, gdy pracownik nie należy do żadnego zespołu
-// (zostaje przy aktualnym przydziale zespołowym) albo gdy już zgadza się z przydziałem.
+// Przypisanie ticketu do konkretnego pracownika (siebie lub kogoś innego) ustawia zespół
+// ticketu na zespół tego pracownika, ale TYLKO gdy ticket nie ma jeszcze żadnego przypisanego
+// zespołu — nie przenosimy ticketu między zespołami, jeśli już należy do jakiegoś. Brak zmiany
+// też wtedy, gdy pracownik nie należy do żadnego zespołu.
 async function syncZespolForAssignee(ticketId, userId, actorId) {
+  const [current] = await pool.query('SELECT zespol_id FROM zespol_has_ticket WHERE ticket_id = ?', [ticketId]);
+  if (current.length) return;
+
   const [teams] = await pool.query('SELECT zespol_id FROM zespol_user WHERE user_id = ?', [userId]);
   if (!teams.length) return;
   const teamIds = [...new Set(teams.map(t => t.zespol_id))].sort((a, b) => a - b);
 
-  const [current] = await pool.query('SELECT zespol_id FROM zespol_has_ticket WHERE ticket_id = ?', [ticketId]);
-  const currentIds = [...new Set(current.map(c => c.zespol_id))].sort((a, b) => a - b);
-
-  const same = teamIds.length === currentIds.length && teamIds.every((id, i) => id === currentIds[i]);
-  if (same) return;
-
   const now = Math.floor(Date.now() / 1000);
-  await pool.query('DELETE FROM zespol_has_ticket WHERE ticket_id = ?', [ticketId]);
   for (const zespolId of teamIds) {
     await pool.query(
       'INSERT INTO zespol_has_ticket (ticket_id, zespol_id, created_at, created_by) VALUES (?, ?, ?, ?)',
