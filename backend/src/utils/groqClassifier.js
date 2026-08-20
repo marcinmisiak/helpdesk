@@ -10,6 +10,14 @@ const DOCS_DIR = path.join(__dirname, '../../docs');
 
 const VALID_TAGS = ['spam', 'niskie', 'normalne', 'pilne'];
 
+// Groq sukcesywnie wycofuje modele — llama-3.1-8b-instant i llama-4-scout (wizja)
+// przestały być dostępne. openai/gpt-oss-20b to obecny odpowiednik szybkiego modelu
+// tekstowego; to model rozumujący, więc SDK zwraca dodatkowe pole message.reasoning
+// obok message.content — parsujemy tylko content, reasoning_effort:'low' ogranicza
+// zużycie tokenów na rozumowanie. Konto nie ma obecnie dostępu do żadnego modelu
+// wizyjnego, więc branch obrazów w generatePublicReply jest wyłączony (patrz niżej).
+const TEXT_MODEL = 'openai/gpt-oss-20b';
+
 function getClient() {
   if (!process.env.GROQ_API_KEY) return null;
   return new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -30,7 +38,8 @@ async function classifyTicket({ subject = '', body = '', from = '' }) {
 
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: TEXT_MODEL,
+      reasoning_effort: 'low',
       messages: [
         {
           role: 'system',
@@ -152,7 +161,8 @@ async function generateReply({ subject = '', body = '', from = '', history = [],
 
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: TEXT_MODEL,
+      reasoning_effort: 'low',
       messages: [
         {
           role: 'system',
@@ -191,7 +201,8 @@ async function formalizeReply({ tresc = '', subject = '' }) {
 
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: TEXT_MODEL,
+      reasoning_effort: 'low',
       messages: [
         {
           role: 'system',
@@ -223,15 +234,20 @@ async function generatePublicReply({ subject = '', body = '', kategoria = '', at
 
   const docs = loadDocs();
   const docsSection = docs ? `\nDokumentacja bazy wiedzy helpdesku:\n\n${docs}\n\n---\n` : '';
-  const attachInfo = attachmentNames.length
-    ? `\nZałączniki: ${attachmentNames.join(', ')}`
-    : '';
+  // Konto Groq nie ma obecnie dostępu do żadnego modelu wizyjnego (llama-4-scout
+  // zostało wycofane), więc zrzuty ekranu nie mogą być podglądane przez AI —
+  // zamiast próbować multimodalny content (co i tak zwróci 400), informujemy
+  // model tylko o ich liczbie, żeby nie halucynował na temat ich zawartości.
+  const attachInfo = [
+    attachmentNames.length ? `Załączniki: ${attachmentNames.join(', ')}` : '',
+    images.length ? `Przesłano ${images.length} zrzut(y) ekranu (podgląd niedostępny).` : '',
+  ].filter(Boolean).join('\n');
 
   const textContent = [
     kategoria ? `Kategoria: ${kategoria}` : '',
     `Temat: ${subject}`,
     `Treść zgłoszenia:\n${(body || '').slice(0, 3000)}`,
-    attachInfo,
+    attachInfo ? `\n${attachInfo}` : '',
   ].filter(Boolean).join('\n');
 
   const systemPrompt = `Jesteś automatycznym asystentem helpdesku. Odpowiadasz bezpośrednio zgłaszającemu na jego problem.${docsSection}
@@ -239,7 +255,7 @@ async function generatePublicReply({ subject = '', body = '', kategoria = '', at
 Zasady:
 - Pisz po polsku, formalnie i uprzejmie
 - Zacznij od "Szanowni Państwo,"
-- Odpowiedz bezpośrednio na problem opisany w zgłoszeniu${images.length ? '\n- Jeśli przesłano zrzut ekranu — odnieś się do tego co na nim widać' : ''}
+- Odpowiedz bezpośrednio na problem opisany w zgłoszeniu
 - Jeśli dokumentacja zawiera odpowiedź — przywołaj ją
 - Jeśli nie — napisz ogólną pomocną odpowiedź
 - Nie używaj żadnych placeholderów
@@ -247,23 +263,13 @@ Zasady:
 - Maksymalnie 300 słów
 - Zwróć TYLKO treść odpowiedzi`;
 
-  // Gdy są obrazy — użyj modelu wizji z multimodalnym contentem
-  const useVision = images.length > 0;
-  const model = useVision ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'llama-3.1-8b-instant';
-
-  const userMessage = useVision
-    ? [
-        { type: 'text', text: textContent },
-        ...images.map(url => ({ type: 'image_url', image_url: { url } })),
-      ]
-    : textContent;
-
   try {
     const chat = await client.chat.completions.create({
-      model,
+      model: TEXT_MODEL,
+      reasoning_effort: 'low',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
+        { role: 'user', content: textContent },
       ],
       temperature: 0.4,
       max_tokens: 800,
