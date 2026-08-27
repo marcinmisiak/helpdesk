@@ -203,12 +203,17 @@ router.post('/zgloszenie', submitLimiter, (req, res, next) => {
   try {
     // Sprawdź kategorie
     let kategoriaName = '';
+    let kategoriaZespol = null;
     if (kategoria_id) {
       const [[kat]] = await pool.query(
-        'SELECT nazwa FROM kategoria_zgloszenia WHERE id = ? AND aktywna = 1',
+        `SELECT k.nazwa, k.zespol_id, z.nazwa as zespol_nazwa
+         FROM kategoria_zgloszenia k
+         LEFT JOIN zespol z ON z.id = k.zespol_id
+         WHERE k.id = ? AND k.aktywna = 1`,
         [kategoria_id]
       );
       kategoriaName = kat?.nazwa || '';
+      if (kat?.zespol_id) kategoriaZespol = { id: kat.zespol_id, nazwa: kat.zespol_nazwa };
     }
 
     // Skonstruuj nadawcę (imię z LDAP jeśli jest)
@@ -235,6 +240,15 @@ router.post('/zgloszenie', submitLimiter, (req, res, next) => {
     const ticketId = result.insertId;
 
     logTicketEvent(ticketId, { typ: 'created', meta: { source: 'web_form' }, actorLabel: 'Formularz publiczny' });
+
+    // Auto-przydział zespołu na podstawie wybranej kategorii (patrz CLAUDE.md "Assignment sets the ticket's team")
+    if (kategoriaZespol) {
+      await pool.query(
+        'INSERT INTO zespol_has_ticket (zespol_id, ticket_id, created_at) VALUES (?, ?, ?)',
+        [kategoriaZespol.id, ticketId, now]
+      );
+      logTicketEvent(ticketId, { typ: 'assigned_team', actorLabel: 'Formularz publiczny', meta: { teamName: kategoriaZespol.nazwa } });
+    }
 
     // Zapisz załączniki
     for (const file of (req.files || [])) {
@@ -275,6 +289,7 @@ router.post('/zgloszenie', submitLimiter, (req, res, next) => {
       from: messageFrom,
       subject: messageSubject,
       source: 'web_form',
+      content: opis,
     }).catch(() => {});
 
     sendWebhookEvent('ticket.created', {

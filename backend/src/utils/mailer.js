@@ -310,7 +310,7 @@ async function sendForward({ to, ticketNumer, ticketSubject, ticketFrom, ticketD
 // Używane zamiast notifyAdminsNewTicket, gdy ticket trafił do zespołu obsługującego kanał
 // (czat/e-mail) z ustawionym notification_email — wysyłane tylko gdy nikt z TEGO zespołu
 // nie jest aktualnie zalogowany (sprawdzane per zespół, nie globalnie po wszystkich adminach).
-async function notifyChannelNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail }) {
+async function notifyChannelNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail, content }) {
   try {
     const ONLINE_THRESHOLD = 3 * 60;
     const now = Math.floor(Date.now() / 1000);
@@ -335,6 +335,7 @@ async function notifyChannelNewTicket({ ticketId, numer, from, subject, source, 
     const link = `${baseUrl}/tickets/${ticketId}`;
     const displaySubject = (subject || '(brak tematu)').replace(/</g, '&lt;');
     const displayFrom = (from || '').replace(/</g, '&lt;');
+    const displayContent = (content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     const appName = await getAppName();
     const lang = await getAppLang(pool);
@@ -362,6 +363,7 @@ async function notifyChannelNewTicket({ ticketId, numer, from, subject, source, 
             <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#111827">${displaySubject}</td>
           </tr>
         </table>
+        ${displayContent ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px;margin:12px 0;font-size:14px;white-space:pre-wrap;color:#374151">${displayContent}</div>` : ''}
         <p style="margin-top:16px">
           <a href="${link}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px">
             ${t(lang, 'btn_view_ticket')}
@@ -375,11 +377,11 @@ async function notifyChannelNewTicket({ ticketId, numer, from, subject, source, 
 }
 
 // ─── notifyAdminsNewTicket — email do adminów (lub na kanał zespołu) o nowym zgłoszeniu ───────
-async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail }) {
+async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail, content }) {
   // Ticket trafił do zespołu, który ma kanał ze skonfigurowanym adresem powiadomień —
   // mail idzie tam, nie do adminów. Bez tej konfiguracji zachowanie jest jak dawniej.
   if (zespolId && channelEmail) {
-    return notifyChannelNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail });
+    return notifyChannelNewTicket({ ticketId, numer, from, subject, source, zespolId, channelEmail, content });
   }
 
   try {
@@ -409,6 +411,7 @@ async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source, z
     const sourceLabel = source === 'web_form' ? 'formularz WWW' : 'email';
     const displaySubject = (subject || '(brak tematu)').replace(/</g, '&lt;');
     const displayFrom = (from || '').replace(/</g, '&lt;');
+    const displayContent = (content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     const appName = await getAppName();
     for (const admin of admins) {
@@ -439,6 +442,7 @@ async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source, z
               <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#111827">${displaySubject}</td>
             </tr>
           </table>
+          ${displayContent ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px;margin:12px 0;font-size:14px;white-space:pre-wrap;color:#374151">${displayContent}</div>` : ''}
           <p style="margin-top:16px">
             <a href="${link}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px">
               ${t(lang, 'btn_view_ticket')}
@@ -449,6 +453,83 @@ async function notifyAdminsNewTicket({ ticketId, numer, from, subject, source, z
     }
   } catch (e) {
     console.warn('[notifyAdminsNewTicket]', e.message);
+  }
+}
+
+// ─── notifyAdminsSpamDeletion — lista usuwanych zgłoszeń-spamu wysyłana do
+// wszystkich adminów tuż przed trwałym skasowaniem (deleteTicketsCascade w
+// ticketDelete.js). Zawsze wysyłana (bez sprawdzania obecności admina online,
+// w przeciwieństwie do notifyAdminsNewTicket) — to log/audyt nieodwracalnej
+// operacji, nie routing zgłoszenia do kogoś kto akurat patrzy na ekran.
+const SPAM_DELETION_MAX_ROWS = 200;
+
+function pluralUnit(lang, count, base) {
+  if (count === 1) return t(lang, `${base}_unit_1`);
+  if (lang === 'pl' && count >= 2 && count <= 4) return t(lang, `${base}_unit_234`);
+  return t(lang, `${base}_unit_many`);
+}
+
+async function notifyAdminsSpamDeletion(tickets) {
+  try {
+    if (!tickets?.length) return;
+
+    const [admins] = await pool.query(
+      `SELECT u.id, u.email, u.imie FROM user u
+       INNER JOIN auth_assignment aa ON aa.user_id = u.id
+       WHERE aa.item_name = 'admin' AND u.status = 10 AND u.email IS NOT NULL AND u.email != ''`
+    );
+    if (!admins.length) return;
+
+    const appName = await getAppName();
+    const count = tickets.length;
+    const shown = tickets.slice(0, SPAM_DELETION_MAX_ROWS);
+    const extra = count - shown.length;
+
+    for (const admin of admins) {
+      const lang = await resolveLang(pool, admin.id);
+      const greeting = admin.imie
+        ? t(lang, 'greeting_day_with_name', { name: admin.imie })
+        : t(lang, 'greeting_formal');
+      const locale = lang === 'pl' ? 'pl-PL' : lang === 'uk' ? 'uk-UA' : 'en-GB';
+      const unit = pluralUnit(lang, count, 'spam_deleted');
+      const subject = count === 1
+        ? t(lang, 'subject_spam_deleted_single', { appName, count })
+        : t(lang, 'subject_spam_deleted_plural', { appName, count });
+
+      const rows = shown.map((tk) => {
+        const displaySubject = (tk.message_subject || t(lang, 'no_subject')).replace(/</g, '&lt;');
+        const displayFrom = (tk.message_from || '').replace(/</g, '&lt;');
+        const date = tk.data_utworzenia ? new Date(tk.data_utworzenia * 1000).toLocaleString(locale) : '';
+        return `<tr>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;color:#111827">#${tk.numer}</td>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;color:#111827">${displayFrom}</td>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;color:#111827">${displaySubject}</td>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;color:#111827">${date}</td>
+        </tr>`;
+      }).join('');
+
+      sendNotification({
+        to: admin.email,
+        subject,
+        greeting,
+        lang,
+        html: `
+          <p>${t(lang, 'spam_deleted_intro', { count, unit })}</p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0">
+            <tr style="background:#f9fafb">
+              <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;color:#374151">${t(lang, 'col_ticket_no')}</td>
+              <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;color:#374151">${t(lang, 'col_from')}</td>
+              <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;color:#374151">${t(lang, 'col_subject')}</td>
+              <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;color:#374151">${t(lang, 'col_date')}</td>
+            </tr>
+            ${rows}
+          </table>
+          ${extra > 0 ? `<p>${t(lang, 'spam_deleted_more', { count: extra })}</p>` : ''}
+        `,
+      }).catch((e) => console.warn(`[notifyAdminsSpamDeletion] email do ${admin.email} nie wysłany:`, e.message));
+    }
+  } catch (e) {
+    console.warn('[notifyAdminsSpamDeletion]', e.message);
   }
 }
 
@@ -566,4 +647,4 @@ async function sendTicketDeferredEmail({ numer, from }) {
   }
 }
 
-module.exports = { sendReply, sendNotification, sendForward, formalTemplate, getSenderInfo, getAppName, notifyAdminsNewTicket, sendTicketRegisteredEmail, sendSurvey, isSystemSenderEmail, sendTicketDeferredEmail };
+module.exports = { sendReply, sendNotification, sendForward, formalTemplate, getSenderInfo, getAppName, notifyAdminsNewTicket, notifyAdminsSpamDeletion, sendTicketRegisteredEmail, sendSurvey, isSystemSenderEmail, sendTicketDeferredEmail };

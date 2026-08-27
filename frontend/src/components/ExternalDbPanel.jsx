@@ -39,6 +39,7 @@ function SourceCard({ source, cached, ticketId, onRefresh, t }) {
         : t('ticket_view.external_db_pending');
 
   const fields = found && cached?.fields ? Object.entries(cached.fields) : [];
+  const link = found ? cached?.link : null;
 
   return (
     <div className={`mb-4 rounded-lg border text-sm ${cardColor}`}>
@@ -65,6 +66,14 @@ function SourceCard({ source, cached, ticketId, onRefresh, t }) {
             </div>
           ))}
         </dl>
+      )}
+      {link && (
+        <div className={`px-4 py-2 text-xs ${fields.length > 0 ? 'border-t border-inherit' : ''}`}>
+          <a href={link.url} target="_blank" rel="noopener noreferrer"
+            className="text-blue-600 dark:text-blue-400 hover:underline font-medium break-words">
+            🔗 {link.text}
+          </a>
+        </div>
       )}
     </div>
   );

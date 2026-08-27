@@ -217,18 +217,24 @@ function KategoriePanel() {
   const [newNazwa, setNewNazwa] = useState('');
   const [newOpis, setNewOpis] = useState('');
   const [newKol, setNewKol] = useState('0');
-  const [editing, setEditing] = useState(null); // { id, nazwa, opis, kolejnosc }
+  const [newZespol, setNewZespol] = useState('');
+  const [editing, setEditing] = useState(null); // { id, nazwa, opis, kolejnosc, zespol_id }
 
   const { data, isLoading } = useQuery({
     queryKey: ['kategorie'],
     queryFn: () => api.get('/kategorie').then(r => r.data.data),
   });
 
+  const { data: zespoly } = useQuery({
+    queryKey: ['zespoly'],
+    queryFn: () => api.get('/zespoly').then((r) => r.data.data),
+  });
+
   const create = useMutation({
-    mutationFn: () => api.post('/kategorie', { nazwa: newNazwa, opis: newOpis, kolejnosc: parseInt(newKol) || 0 }),
+    mutationFn: () => api.post('/kategorie', { nazwa: newNazwa, opis: newOpis, kolejnosc: parseInt(newKol) || 0, zespol_id: newZespol || null }),
     onSuccess: () => {
       toast.success('Kategoria dodana');
-      setNewNazwa(''); setNewOpis(''); setNewKol('0');
+      setNewNazwa(''); setNewOpis(''); setNewKol('0'); setNewZespol('');
       qc.invalidateQueries(['kategorie']);
     },
     onError: (err) => toast.error(err.response?.data?.error || 'Błąd dodawania'),
@@ -257,6 +263,7 @@ function KategoriePanel() {
       <h3 className="font-semibold mb-4">Kategorie zgłoszeń</h3>
       <p className="text-xs text-gray-500 mb-4">
         Kategorie są widoczne w publicznym formularzu zgłoszeń. Użyj pola „Kolejność" do sortowania.
+        Przypisanie zespołu powoduje automatyczne przydzielenie zgłoszenia do tego zespołu przy tworzeniu z formularza.
       </p>
 
       {/* Tabela istniejących */}
@@ -269,6 +276,7 @@ function KategoriePanel() {
               <tr className="border-b text-left text-gray-500">
                 <th className="pb-2 font-medium">Nazwa</th>
                 <th className="pb-2 font-medium hidden sm:table-cell">Opis</th>
+                <th className="pb-2 font-medium hidden md:table-cell">Zespół</th>
                 <th className="pb-2 font-medium text-center w-16">Kol.</th>
                 <th className="pb-2 font-medium text-center w-20">Status</th>
                 <th className="pb-2 w-24"></th>
@@ -276,7 +284,7 @@ function KategoriePanel() {
             </thead>
             <tbody className="divide-y">
               {rows.length === 0 && (
-                <tr><td colSpan={5} className="py-4 text-center text-gray-400">Brak kategorii</td></tr>
+                <tr><td colSpan={6} className="py-4 text-center text-gray-400">Brak kategorii</td></tr>
               )}
               {rows.map(k => (
                 <tr key={k.id} className={!k.aktywna ? 'opacity-50' : ''}>
@@ -296,6 +304,18 @@ function KategoriePanel() {
                           onChange={e => setEditing(v => ({ ...v, opis: e.target.value }))}
                         />
                       </td>
+                      <td className="py-2 pr-2 hidden md:table-cell">
+                        <select
+                          className="input py-1 text-sm"
+                          value={editing.zespol_id || ''}
+                          onChange={e => setEditing(v => ({ ...v, zespol_id: e.target.value }))}
+                        >
+                          <option value="">— brak —</option>
+                          {zespoly?.map(z => (
+                            <option key={z.id} value={z.id}>{z.nazwa}</option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="py-2 pr-2 text-center">
                         <input
                           type="number"
@@ -307,7 +327,7 @@ function KategoriePanel() {
                       <td></td>
                       <td className="py-2 flex gap-1">
                         <button
-                          onClick={() => update.mutate({ nazwa: editing.nazwa, opis: editing.opis, kolejnosc: parseInt(editing.kolejnosc) || 0 })}
+                          onClick={() => update.mutate({ nazwa: editing.nazwa, opis: editing.opis, kolejnosc: parseInt(editing.kolejnosc) || 0, zespol_id: editing.zespol_id || null })}
                           className="btn-primary btn-sm py-1 px-2 text-xs"
                         >Zapisz</button>
                         <button onClick={() => setEditing(null)} className="btn-secondary btn-sm py-1 px-2 text-xs">✕</button>
@@ -317,6 +337,7 @@ function KategoriePanel() {
                     <>
                       <td className="py-2 pr-2 font-medium">{k.nazwa}</td>
                       <td className="py-2 pr-2 text-gray-500 hidden sm:table-cell">{k.opis || '—'}</td>
+                      <td className="py-2 pr-2 text-gray-500 hidden md:table-cell">{k.zespol_nazwa || '—'}</td>
                       <td className="py-2 pr-2 text-center text-gray-500">{k.kolejnosc}</td>
                       <td className="py-2 text-center">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${k.aktywna ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -325,7 +346,7 @@ function KategoriePanel() {
                       </td>
                       <td className="py-2">
                         <div className="flex gap-1 justify-end">
-                          <button onClick={() => setEditing({ id: k.id, nazwa: k.nazwa, opis: k.opis || '', kolejnosc: k.kolejnosc })} className="text-blue-600 hover:underline text-xs">Edytuj</button>
+                          <button onClick={() => setEditing({ id: k.id, nazwa: k.nazwa, opis: k.opis || '', kolejnosc: k.kolejnosc, zespol_id: k.zespol_id || '' })} className="text-blue-600 hover:underline text-xs">Edytuj</button>
                           <button onClick={() => toggleActive.mutate({ id: k.id, aktywna: k.aktywna })} className="text-gray-500 hover:text-gray-700 text-xs">
                             {k.aktywna ? 'Ukryj' : 'Pokaż'}
                           </button>
@@ -365,6 +386,17 @@ function KategoriePanel() {
             onChange={e => setNewKol(e.target.value)}
             title="Kolejność sortowania"
           />
+          <select
+            className="input py-1.5 text-sm min-w-40"
+            value={newZespol}
+            onChange={e => setNewZespol(e.target.value)}
+            title="Zespół do automatycznego przydziału"
+          >
+            <option value="">— zespół (opcjonalnie) —</option>
+            {zespoly?.map(z => (
+              <option key={z.id} value={z.id}>{z.nazwa}</option>
+            ))}
+          </select>
           <button
             onClick={() => newNazwa.trim() && create.mutate()}
             disabled={!newNazwa.trim() || create.isPending}
@@ -1738,6 +1770,11 @@ export default function Ustawienia() {
     queryFn: () => api.get('/ustawienia').then(r => r.data.ustawienia),
   });
 
+  const { data: zespoly } = useQuery({
+    queryKey: ['zespoly'],
+    queryFn: () => api.get('/zespoly').then((r) => r.data.data),
+  });
+
   const effectiveForm = Object.keys(form).length ? form : (data || {});
 
   const save = useMutation({
@@ -2101,6 +2138,26 @@ export default function Ustawienia() {
               </div>
             </div>
           )}
+
+          {/* Domyślny zespół dla zgłoszeń z głównej skrzynki */}
+          <div className="card">
+            <h3 className="font-semibold mb-1">Zespół dla nowych zgłoszeń</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Zgłoszenia, które przyjdą na główną skrzynkę (bez osobnego kanału e-mail), zostaną od razu
+              przydzielone do wybranego zespołu — tak jak zgłoszenia z dedykowanych kanałów. Zostaw puste,
+              aby zgłoszenia trafiały tylko do puli adminów, bez automatycznego przydziału zespołu.
+            </p>
+            <select
+              value={effectiveForm.email_zespol_id || ''}
+              onChange={set('email_zespol_id')}
+              className="input"
+            >
+              <option value="">(brak — powiadamiaj wszystkich adminów)</option>
+              {zespoly?.map((z) => (
+                <option key={z.id} value={z.id}>{z.nazwa}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Opcje czyszczenia skrzynki */}
           <MailboxCleanupPanel form={effectiveForm} set={set} setCheck={setCheck} />

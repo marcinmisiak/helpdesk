@@ -487,10 +487,15 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
     // Status zostaje 1 (nowy) niezależnie od kanału — w przeciwieństwie do czatu/Messengera,
     // e-mail jest async i musi przejść tę samą kolejkę nowy→przydzielony→zamknięty, inaczej
     // liczniki "nowe"/"w toku" (statystyki.js, alerts.js) zostałyby zafałszowane.
-    if (channel?.zespolId) {
+    // Kanał e-mail (kanal_czatu) ma zawsze swój zespol_id; główna skrzynka (channel === null)
+    // nie ma żadnego routingu z definicji, więc pada z powrotem na ustawienia.email_zespol_id
+    // (analogiczne do messenger_zespol_id) — bez tego ticket z głównej skrzynki nigdy nie trafia
+    // do żadnego zespołu (patrz CLAUDE.md "Assignment sets the ticket's team", ticket #5451).
+    const zespolId = channel?.zespolId || settings.email_zespol_id || null;
+    if (zespolId) {
       await pool.query(
         'INSERT INTO zespol_has_ticket (zespol_id, ticket_id, created_at) VALUES (?, ?, ?)',
-        [channel.zespolId, result.insertId, now]
+        [zespolId, result.insertId, now]
       );
     }
 
@@ -499,8 +504,8 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
     const { lookupEmail } = require('./ldap');
     const { notifyAdminsNewTicket, sendTicketRegisteredEmail } = require('./mailer');
 
-    if (channel?.zespolId) {
-      const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [channel.zespolId]);
+    if (zespolId) {
+      const [members] = await pool.query('SELECT user_id FROM zespol_user WHERE zespol_id = ?', [zespolId]);
       notifyUsers(members.map((m) => m.user_id), {
         title: 'Nowe zgłoszenie e-mail',
         body: `Od: ${from} | Temat: ${subject}`,
@@ -525,6 +530,7 @@ async function processEmailItem({ from, to, subject, text, html, messageId, inRe
       source: 'email',
       zespolId: channel?.zespolId,
       channelEmail: channel?.notificationEmail,
+      content: saveText,
     }).catch(() => {});
 
     classifyAndSave(result.insertId, { subject, body: text, from }).catch(() => {});

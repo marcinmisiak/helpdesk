@@ -18,6 +18,8 @@ module.exports = {
   subject_internal_note: '[{appName}] Nowa notatka wewnętrzna w zgłoszeniu #{numer}',
   subject_customer_reply_email: '[{appName}] Nowa odpowiedź od zgłaszającego w zgłoszeniu #{numer}',
   subject_reset_password: 'Resetowanie hasła — {appName}',
+  subject_spam_deleted_single: '[{appName}] Usunięto {count} zgłoszenie oznaczone jako spam',
+  subject_spam_deleted_plural: '[{appName}] Usunięto {count} zgłoszeń oznaczonych jako spam',
 
   // Treści maili
   greeting_day: 'Dzień dobry{name},',
@@ -33,6 +35,8 @@ module.exports = {
   col_ticket_no: 'Nr zgłoszenia',
   col_from: 'Od',
   col_subject: 'Temat',
+  col_content: 'Treść',
+  col_date: 'Data',
   col_team: 'Zespół',
   col_assigned_by: 'Przypisał/a',
   col_removed_by: 'Usunął/a',
@@ -96,4 +100,11 @@ module.exports = {
   // Odłożenie zgłoszenia — powiadomienie dla zgłaszającego
   subject_ticket_deferred: 'Aktualizacja zgłoszenia #{numer} — potrzebujemy więcej czasu',
   ticket_deferred_intro: 'Nasz zespół potrzebuje więcej czasu na odpowiedź na Twoje pytanie w zgłoszeniu <strong>#{numer}</strong>. Prosimy o cierpliwość.',
+
+  // Trwałe usunięcie spamu — powiadomienie dla adminów (przed skasowaniem)
+  spam_deleted_intro: 'Za chwilę zostanie trwale usuniętych <strong>{count} {unit}</strong> oznaczonych jako spam. Poniżej pełna lista, zanim dane znikną z systemu.',
+  spam_deleted_unit_1: 'zgłoszenie',
+  spam_deleted_unit_234: 'zgłoszenia',
+  spam_deleted_unit_many: 'zgłoszeń',
+  spam_deleted_more: '...oraz {count} kolejnych, nie pokazanych powyżej.',
 };

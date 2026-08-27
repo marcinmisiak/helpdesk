@@ -2,18 +2,21 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { testConnection, assertSafeIdentifier } = require('../utils/zewnetrznaBaza');
+const { testConnection, assertSafeIdentifier, extractPlaceholders } = require('../utils/zewnetrznaBaza');
 
 router.use(authenticate);
 
 const SILNIKI = ['mysql', 'firebird'];
 
-function validateIdentifiers(tabela, kolumna_email, mapowanie_pol) {
+function validateIdentifiers(tabela, kolumna_email, mapowanie_pol, link_url_wzor, link_tekst_wzor, link_warunek_pole) {
   assertSafeIdentifier(tabela, 'tabeli');
   assertSafeIdentifier(kolumna_email, 'kolumny email');
   if (Array.isArray(mapowanie_pol)) {
     for (const m of mapowanie_pol) assertSafeIdentifier(m.column, 'kolumny mapowania');
   }
+  for (const f of extractPlaceholders(link_url_wzor)) assertSafeIdentifier(f, 'pola w linku');
+  for (const f of extractPlaceholders(link_tekst_wzor)) assertSafeIdentifier(f, 'pola w linku');
+  if (link_warunek_pole) assertSafeIdentifier(link_warunek_pole, 'pola warunku linku');
 }
 
 // GET /api/zewnetrzne-bazy — lista (każdy zalogowany — potrzebne do panelu w widoku ticketu)
@@ -29,14 +32,17 @@ router.get('/', async (req, res) => {
 
 // POST /api/zewnetrzne-bazy
 router.post('/', requireAdmin, async (req, res) => {
-  const { nazwa, silnik, host, port, baza, login, haslo, tabela, kolumna_email, mapowanie_pol, aktywna } = req.body;
+  const {
+    nazwa, silnik, host, port, baza, login, haslo, tabela, kolumna_email, mapowanie_pol, aktywna,
+    link_url_wzor, link_tekst_wzor, link_warunek_pole,
+  } = req.body;
   if (!nazwa?.trim()) return res.status(400).json({ error: 'Nazwa jest wymagana' });
   if (!SILNIKI.includes(silnik)) return res.status(400).json({ error: 'Nieprawidłowy silnik' });
   if (!tabela?.trim()) return res.status(400).json({ error: 'Nazwa tabeli jest wymagana' });
   if (!kolumna_email?.trim()) return res.status(400).json({ error: 'Kolumna email jest wymagana' });
 
   try {
-    validateIdentifiers(tabela.trim(), kolumna_email.trim(), mapowanie_pol);
+    validateIdentifiers(tabela.trim(), kolumna_email.trim(), mapowanie_pol, link_url_wzor, link_tekst_wzor, link_warunek_pole);
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -45,13 +51,16 @@ router.post('/', requireAdmin, async (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     const [result] = await pool.query(
       `INSERT INTO zewnetrzna_baza
-        (nazwa, silnik, host, port, baza, login, haslo, tabela, kolumna_email, mapowanie_pol, aktywna, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (nazwa, silnik, host, port, baza, login, haslo, tabela, kolumna_email, mapowanie_pol, aktywna,
+         link_url_wzor, link_tekst_wzor, link_warunek_pole, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         nazwa.trim(), silnik, host?.trim() || null, port || null, baza?.trim() || null,
         login?.trim() || null, haslo || null, tabela.trim(), kolumna_email.trim(),
         mapowanie_pol ? JSON.stringify(mapowanie_pol) : null,
-        aktywna !== undefined ? (aktywna ? 1 : 0) : 1, now, now,
+        aktywna !== undefined ? (aktywna ? 1 : 0) : 1,
+        link_url_wzor?.trim() || null, link_tekst_wzor?.trim() || null, link_warunek_pole?.trim() || null,
+        now, now,
       ]
     );
     res.status(201).json({ id: result.insertId });
@@ -62,7 +71,10 @@ router.post('/', requireAdmin, async (req, res) => {
 
 // PUT /api/zewnetrzne-bazy/:id
 router.put('/:id', requireAdmin, async (req, res) => {
-  const { nazwa, silnik, host, port, baza, login, haslo, tabela, kolumna_email, mapowanie_pol, aktywna } = req.body;
+  const {
+    nazwa, silnik, host, port, baza, login, haslo, tabela, kolumna_email, mapowanie_pol, aktywna,
+    link_url_wzor, link_tekst_wzor, link_warunek_pole,
+  } = req.body;
   if (nazwa !== undefined && !nazwa?.trim()) return res.status(400).json({ error: 'Nazwa nie może być pusta' });
   if (silnik !== undefined && !SILNIKI.includes(silnik)) return res.status(400).json({ error: 'Nieprawidłowy silnik' });
 
@@ -72,6 +84,13 @@ router.put('/:id', requireAdmin, async (req, res) => {
     if (mapowanie_pol !== undefined && Array.isArray(mapowanie_pol)) {
       for (const m of mapowanie_pol) assertSafeIdentifier(m.column, 'kolumny mapowania');
     }
+    if (link_url_wzor !== undefined) {
+      for (const f of extractPlaceholders(link_url_wzor)) assertSafeIdentifier(f, 'pola w linku');
+    }
+    if (link_tekst_wzor !== undefined) {
+      for (const f of extractPlaceholders(link_tekst_wzor)) assertSafeIdentifier(f, 'pola w linku');
+    }
+    if (link_warunek_pole) assertSafeIdentifier(link_warunek_pole.trim(), 'pola warunku linku');
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -94,6 +113,9 @@ router.put('/:id', requireAdmin, async (req, res) => {
     if (kolumna_email !== undefined) { updates.push('kolumna_email = ?'); values.push(kolumna_email.trim()); }
     if (mapowanie_pol !== undefined) { updates.push('mapowanie_pol = ?'); values.push(JSON.stringify(mapowanie_pol)); }
     if (aktywna !== undefined) { updates.push('aktywna = ?'); values.push(aktywna ? 1 : 0); }
+    if (link_url_wzor !== undefined) { updates.push('link_url_wzor = ?'); values.push(link_url_wzor?.trim() || null); }
+    if (link_tekst_wzor !== undefined) { updates.push('link_tekst_wzor = ?'); values.push(link_tekst_wzor?.trim() || null); }
+    if (link_warunek_pole !== undefined) { updates.push('link_warunek_pole = ?'); values.push(link_warunek_pole?.trim() || null); }
 
     values.push(req.params.id);
     await pool.query(`UPDATE zewnetrzna_baza SET ${updates.join(', ')} WHERE id = ?`, values);
@@ -108,6 +130,18 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM zewnetrzna_baza WHERE id = ?', [req.params.id]);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/zewnetrzne-bazy/:id/haslo — zwraca zapisane hasło w jawnej postaci (tylko admin;
+// GET / celowo je pomija, ten endpoint istnieje żeby admin mógł je podejrzeć/skopiować)
+router.get('/:id/haslo', requireAdmin, async (req, res) => {
+  try {
+    const [[row]] = await pool.query('SELECT haslo FROM zewnetrzna_baza WHERE id = ?', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Źródło nie znalezione' });
+    res.json({ haslo: row.haslo || '' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

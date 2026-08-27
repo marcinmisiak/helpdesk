@@ -1,10 +1,51 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import useDateLocale from '../i18n/useDateLocale';
 import api from '../api/client';
 import toast from 'react-hot-toast';
+
+function TrustedDomains() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [edited, setEdited] = useState(null);
+
+  const { data } = useQuery({
+    queryKey: ['ustawienia'],
+    queryFn: () => api.get('/ustawienia').then((r) => r.data.ustawienia),
+  });
+
+  const value = edited !== null ? edited : (data?.trusted_domains || '');
+
+  const save = useMutation({
+    mutationFn: () => api.put('/ustawienia', { trusted_domains: value }),
+    onSuccess: () => {
+      toast.success(t('spam.domains.saved'));
+      qc.invalidateQueries(['ustawienia']);
+    },
+    onError: (err) => toast.error(err.response?.data?.error || 'Błąd zapisu'),
+  });
+
+  if (!data) return null;
+
+  return (
+    <div className="card p-4 mt-6">
+      <h3 className="font-semibold text-gray-900">{t('spam.domains.title')}</h3>
+      <p className="text-xs text-gray-500 mt-1 mb-3">{t('spam.domains.description')}</p>
+      <textarea
+        value={value}
+        onChange={(e) => setEdited(e.target.value)}
+        rows={3}
+        className="input resize-y w-full"
+        placeholder={t('spam.domains.placeholder')}
+      />
+      <button onClick={() => save.mutate()} className="btn-secondary btn-sm mt-2">
+        {t('spam.domains.save')}
+      </button>
+    </div>
+  );
+}
 
 function SenderList({ typ }) {
   const { t } = useTranslation();
@@ -257,6 +298,7 @@ export default function Spam() {
         </>
       )}
 
+      <TrustedDomains />
       <SenderList typ="spam" />
       <SenderList typ="zaufany" />
     </div>

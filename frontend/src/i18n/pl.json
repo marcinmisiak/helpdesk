@@ -500,6 +500,8 @@
     "active_yes": "Aktywne",
     "active_no": "Wyłączone",
     "edit": "Edytuj",
+    "copy": "Kopiuj",
+    "copy_name": "{{name}} (kopia)",
     "delete": "Usuń",
     "modal_new_title": "Nowe źródło",
     "modal_edit_title": "Edytuj źródło",
@@ -512,6 +514,8 @@
     "field_login": "Login",
     "field_password": "Hasło",
     "field_password_hint": "(zostaw puste aby nie zmieniać)",
+    "field_password_show": "Pokaż",
+    "field_password_hide": "Ukryj",
     "field_table": "Tabela",
     "field_email_column": "Kolumna z adresem e-mail",
     "field_mapping": "Mapowanie pól do wyświetlenia",
@@ -519,6 +523,11 @@
     "field_mapping_label": "Etykieta",
     "field_mapping_add": "+ Dodaj pole",
     "field_mapping_empty": "Brak mapowania — dodaj pierwsze pole.",
+    "field_link": "Link do systemu zewnętrznego",
+    "field_link_hint": "Opcjonalnie: zbuduj klikalny link z pól zwróconych przez zapytanie. Użyj {NAZWA_KOLUMNY}, żeby wstawić wartość pola — kolumny użyte tutaj zostaną automatycznie dociągnięte z bazy, nawet jeśli nie są w mapowaniu pól wyżej.",
+    "field_link_url": "Adres linku (URL)",
+    "field_link_text": "Tekst linku",
+    "field_link_condition": "Pole warunkujące (link pokazany tylko gdy pole jest niepuste)",
     "field_active": "Źródło aktywne",
     "test_connection": "Testuj połączenie",
     "testing": "Testowanie...",
@@ -578,6 +587,13 @@
       "remove": "Usuń",
       "confirm_remove": "Usunąć tego nadawcę z zaufanych?",
       "removed": "Usunięto wpis"
+    },
+    "domains": {
+      "title": "Zaufane domeny",
+      "description": "Nadawcy z tych domen (i ich subdomen) nigdy nie są traktowani jako spam — nawet jeśli StopForumSpam albo lokalna czarna lista mówią inaczej. Jedna domena na linię, bez \"@\".",
+      "placeholder": "lipinski.edu.pl",
+      "save": "Zapisz",
+      "saved": "Zapisano zaufane domeny"
     }
   },
   "calendar": {

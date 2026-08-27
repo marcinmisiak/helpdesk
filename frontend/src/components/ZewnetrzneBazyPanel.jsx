@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 const EMPTY_SOURCE = {
   nazwa: '', silnik: 'mysql', host: '', port: '', baza: '',
   login: '', haslo: '', tabela: '', kolumna_email: '', mapowanie_pol: [], aktywna: true,
+  link_url_wzor: '', link_tekst_wzor: '', link_warunek_pole: '',
 };
 
 function FieldMappingEditor({ mapping, onChange, t }) {
@@ -55,9 +56,28 @@ function SourceModal({ source, onClose, onSuccess, t }) {
   const [f, setF] = useState({ ...EMPTY_SOURCE, ...source, mapowanie_pol: source?.mapowanie_pol ? (() => { try { return JSON.parse(source.mapowanie_pol); } catch { return []; } })() : [] });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [pwVisible, setPwVisible] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
 
   const ch = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
   const valid = f.nazwa.trim() && f.tabela.trim() && f.kolumna_email.trim();
+
+  const togglePassword = async () => {
+    if (pwVisible) { setPwVisible(false); return; }
+    if (!f.haslo && source?.id) {
+      setPwLoading(true);
+      try {
+        const { data } = await api.get(`/zewnetrzne-bazy/${source.id}/haslo`);
+        setF((p) => ({ ...p, haslo: data.haslo }));
+      } catch (err) {
+        toast.error(err.response?.data?.error || t('external_db.error_save'));
+        setPwLoading(false);
+        return;
+      }
+      setPwLoading(false);
+    }
+    setPwVisible(true);
+  };
 
   const save = useMutation({
     mutationFn: () => {
@@ -129,7 +149,25 @@ function SourceModal({ source, onClose, onSuccess, t }) {
             </div>
             <div>
               <label className="label">{t('external_db.field_password')}</label>
-              <input type="password" value={f.haslo} onChange={ch('haslo')} className="input" placeholder={t('external_db.field_password_hint')} />
+              <div className="flex gap-1.5">
+                <input
+                  type={pwVisible ? 'text' : 'password'}
+                  value={f.haslo}
+                  onChange={ch('haslo')}
+                  className="input flex-1"
+                  placeholder={t('external_db.field_password_hint')}
+                />
+                {source?.id && (
+                  <button
+                    type="button"
+                    onClick={togglePassword}
+                    disabled={pwLoading}
+                    className="btn-secondary btn-sm whitespace-nowrap disabled:opacity-50"
+                  >
+                    {pwLoading ? t('external_db.testing') : pwVisible ? t('external_db.field_password_hide') : t('external_db.field_password_show')}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -147,6 +185,28 @@ function SourceModal({ source, onClose, onSuccess, t }) {
           <div className="pt-2 border-t dark:border-gray-700">
             <label className="label mb-1.5">{t('external_db.field_mapping')}</label>
             <FieldMappingEditor mapping={f.mapowanie_pol} onChange={(m) => setF((p) => ({ ...p, mapowanie_pol: m }))} t={t} />
+          </div>
+
+          <div className="pt-2 border-t dark:border-gray-700 space-y-3">
+            <div>
+              <label className="label mb-1">{t('external_db.field_link')}</label>
+              <p className="text-xs text-gray-400 mb-2">{t('external_db.field_link_hint')}</p>
+            </div>
+            <div>
+              <label className="label">{t('external_db.field_link_url')}</label>
+              <input value={f.link_url_wzor} onChange={ch('link_url_wzor')} className="input font-mono text-sm"
+                placeholder="https://lan.lipinski.edu.pl/stud/{OSOBA_ID}" />
+            </div>
+            <div>
+              <label className="label">{t('external_db.field_link_text')}</label>
+              <input value={f.link_tekst_wzor} onChange={ch('link_tekst_wzor')} className="input text-sm"
+                placeholder="{IMIE} {NAZWISKO}" />
+            </div>
+            <div>
+              <label className="label">{t('external_db.field_link_condition')}</label>
+              <input value={f.link_warunek_pole} onChange={ch('link_warunek_pole')} className="input font-mono text-sm"
+                placeholder="STUDIA_ID" />
+            </div>
           </div>
 
           <div className="flex items-center gap-2 pt-1">
@@ -210,6 +270,17 @@ export default function ZewnetrzneBazyPanel() {
     }
   };
 
+  const copySource = async (s) => {
+    let haslo = '';
+    try {
+      const { data } = await api.get(`/zewnetrzne-bazy/${s.id}/haslo`);
+      haslo = data.haslo || '';
+    } catch {
+      // brak dostępu do hasła nie powinien blokować kopiowania — admin wpisze je ręcznie
+    }
+    setEditing({ ...s, id: undefined, nazwa: t('external_db.copy_name', { name: s.nazwa }), haslo });
+  };
+
   const rows = data || [];
 
   return (
@@ -265,6 +336,10 @@ export default function ZewnetrzneBazyPanel() {
                         {testingId === s.id ? t('external_db.testing') : t('external_db.test_connection')}
                       </button>
                       <button onClick={() => setEditing(s)} className="text-xs text-blue-600 hover:underline px-1">{t('external_db.edit')}</button>
+                      <button
+                        onClick={() => copySource(s)}
+                        className="text-xs text-gray-500 hover:underline px-1"
+                      >{t('external_db.copy')}</button>
                       <button
                         onClick={() => window.confirm(t('external_db.confirm_delete', { name: s.nazwa })) && del.mutate(s.id)}
                         className="text-xs text-red-500 hover:underline px-1"

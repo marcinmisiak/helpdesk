@@ -9,6 +9,23 @@ function extractEmail(from) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate : null;
 }
 
+// Zaufane domeny (ustawienia.trusted_domains, admin: zakładka Spam) — nadawcy z tych
+// domen i ich subdomen nigdy nie są traktowani jako spam, niezależnie od lokalnej
+// czarnej listy czy StopForumSpam. Jedna domena na linię, bez wstępnego "@".
+async function isTrustedDomain(email) {
+  if (!email) return false;
+  const domain = email.split('@')[1];
+  if (!domain) return false;
+
+  const [[row]] = await pool.query('SELECT trusted_domains FROM ustawienia WHERE id = 1');
+  const domains = (row?.trusted_domains || '')
+    .split(/\r?\n/)
+    .map((d) => d.trim().toLowerCase().replace(/^@/, ''))
+    .filter(Boolean);
+
+  return domains.some((d) => domain === d || domain.endsWith(`.${d}`));
+}
+
 async function checkLocalList({ typ, email, ip }) {
   if (!email && !ip) return null;
   const conditions = [];
@@ -52,6 +69,8 @@ async function checkStopForumSpam({ email, ip }) {
 // a oba mają priorytet nad zapytaniem AI.
 async function checkSenderStatus({ email, ip }) {
   if (!email && !ip) return null;
+
+  if (await isTrustedDomain(email)) return { typ: 'zaufany' };
 
   const trusted = await checkLocalList({ typ: 'zaufany', email, ip: null });
   if (trusted) return { typ: 'zaufany' };

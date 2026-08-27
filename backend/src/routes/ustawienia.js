@@ -118,6 +118,7 @@ router.put('/', requireAdmin, async (req, res) => {
       'powiadom_nadawce',
       'powiadom_rejestracja',
       'system_email_list',
+      'trusted_domains',
       'powiadom_aktywnosc',
       // LDAP
       'ldap_enabled', 'ldap_host', 'ldap_port', 'ldap_base_dn',
@@ -148,6 +149,8 @@ router.put('/', requireAdmin, async (req, res) => {
       // Facebook Messenger
       'messenger_enabled', 'messenger_page_id', 'messenger_page_access_token',
       'messenger_app_secret', 'messenger_zespol_id',
+      // Domyślny zespół dla głównej skrzynki e-mail
+      'email_zespol_id',
       // Webhook (automatyzacja)
       'webhook_enabled', 'webhook_url',
       // Kod OTP na publicznej stronie statusu zgłoszenia

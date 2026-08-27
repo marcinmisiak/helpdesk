@@ -500,6 +500,8 @@
     "active_yes": "Active",
     "active_no": "Disabled",
     "edit": "Edit",
+    "copy": "Copy",
+    "copy_name": "{{name}} (copy)",
     "delete": "Delete",
     "modal_new_title": "New source",
     "modal_edit_title": "Edit source",
@@ -512,6 +514,8 @@
     "field_login": "Login",
     "field_password": "Password",
     "field_password_hint": "(leave blank to keep unchanged)",
+    "field_password_show": "Show",
+    "field_password_hide": "Hide",
     "field_table": "Table",
     "field_email_column": "Email column",
     "field_mapping": "Fields to display",
@@ -519,6 +523,11 @@
     "field_mapping_label": "Label",
     "field_mapping_add": "+ Add field",
     "field_mapping_empty": "No mapping yet — add the first field.",
+    "field_link": "Link to external system",
+    "field_link_hint": "Optional: build a clickable link from fields returned by the query. Use {COLUMN_NAME} to insert a field's value — columns used here are automatically fetched from the database, even if they're not in the field mapping above.",
+    "field_link_url": "Link address (URL)",
+    "field_link_text": "Link text",
+    "field_link_condition": "Condition field (link shown only when this field is non-empty)",
     "field_active": "Source active",
     "test_connection": "Test connection",
     "testing": "Testing...",
@@ -578,6 +587,13 @@
       "remove": "Remove",
       "confirm_remove": "Remove this sender from the trusted list?",
       "removed": "Entry removed"
+    },
+    "domains": {
+      "title": "Trusted domains",
+      "description": "Senders from these domains (and their subdomains) are never treated as spam — even if StopForumSpam or the local blocklist say otherwise. One domain per line, without \"@\".",
+      "placeholder": "lipinski.edu.pl",
+      "save": "Save",
+      "saved": "Trusted domains saved"
     }
   },
   "calendar": {

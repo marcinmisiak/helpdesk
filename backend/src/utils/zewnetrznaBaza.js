@@ -45,9 +45,45 @@ function safeErrorMessage(err) {
   return 'Błąd połączenia z bazą zewnętrzną';
 }
 
+// Wyciąga nazwy kolumn z szablonu linku, np. "https://x/{OSOBA_ID}/{TYP}" -> ['OSOBA_ID', 'TYP']
+function extractPlaceholders(tpl) {
+  if (!tpl) return [];
+  const out = [];
+  const re = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+  let m;
+  while ((m = re.exec(tpl))) out.push(m[1]);
+  return out;
+}
+
 function buildSelect(source) {
-  const columns = source.mapowanie.map((m) => m.column);
-  return columns.length ? columns.map((c) => `\`${c}\``).join(', ') : '*';
+  // Brak mapowania -> '*' już zawiera wszystkie kolumny, w tym te użyte w linku.
+  if (!source.mapowanie.length) return '*';
+  const columns = new Set(source.mapowanie.map((m) => m.column));
+  for (const f of extractPlaceholders(source.link_url_wzor)) columns.add(f);
+  for (const f of extractPlaceholders(source.link_tekst_wzor)) columns.add(f);
+  if (source.link_warunek_pole) columns.add(source.link_warunek_pole);
+  return [...columns].map((c) => `\`${c}\``).join(', ');
+}
+
+function fillTemplate(tpl, row) {
+  return tpl.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, key) => {
+    const val = row[key];
+    return val === undefined || val === null ? '' : String(val);
+  });
+}
+
+// Buduje { url, text } z surowego wiersza wyniku wg skonfigurowanych szablonów, tylko gdy
+// link_warunek_pole (jeśli ustawione) jest niepuste w tym wierszu. Zwraca null gdy link
+// nie jest skonfigurowany albo warunek nie jest spełniony.
+function buildLink(row, source) {
+  if (!source.link_url_wzor) return null;
+  if (source.link_warunek_pole) {
+    const condVal = row[source.link_warunek_pole];
+    if (condVal === undefined || condVal === null || condVal === '') return null;
+  }
+  const url = fillTemplate(source.link_url_wzor, row);
+  const text = source.link_tekst_wzor ? fillTemplate(source.link_tekst_wzor, row) : url;
+  return { url, text };
 }
 
 async function lookupMysql(source, email) {
@@ -124,6 +160,9 @@ function validateSourceIdentifiers(source) {
   assertSafeIdentifier(source.tabela, 'tabeli');
   assertSafeIdentifier(source.kolumna_email, 'kolumny email');
   for (const m of source.mapowanie || []) assertSafeIdentifier(m.column, 'kolumny mapowania');
+  for (const f of extractPlaceholders(source.link_url_wzor)) assertSafeIdentifier(f, 'pola w linku');
+  for (const f of extractPlaceholders(source.link_tekst_wzor)) assertSafeIdentifier(f, 'pola w linku');
+  if (source.link_warunek_pole) assertSafeIdentifier(source.link_warunek_pole, 'pola warunku linku');
 }
 
 async function lookupEmailInSource(source, email) {
@@ -137,7 +176,9 @@ async function lookupEmailInSource(source, email) {
       : await lookupMysql(source, cleanEmail);
 
     if (!row) return { status: 'not_found' };
-    return { status: 'found', fields: mapResultRow(row, source.mapowanie || []) };
+    const fields = mapResultRow(row, source.mapowanie || []);
+    const link = buildLink(row, source);
+    return { status: 'found', fields, ...(link ? { link } : {}) };
   } catch (err) {
     return { status: 'error', error: safeErrorMessage(err) };
   }
@@ -187,4 +228,5 @@ module.exports = {
   lookupEmailInSource,
   testConnection,
   assertSafeIdentifier,
+  extractPlaceholders,
 };

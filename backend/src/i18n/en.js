@@ -18,6 +18,8 @@ module.exports = {
   subject_internal_note: '[{appName}] New internal note on ticket #{numer}',
   subject_customer_reply_email: '[{appName}] New reply from requester on ticket #{numer}',
   subject_reset_password: 'Password reset — {appName}',
+  subject_spam_deleted_single: '[{appName}] Deleted {count} ticket marked as spam',
+  subject_spam_deleted_plural: '[{appName}] Deleted {count} tickets marked as spam',
 
   // Email body
   greeting_day: 'Hello{name},',
@@ -33,6 +35,8 @@ module.exports = {
   col_ticket_no: 'Ticket no.',
   col_from: 'From',
   col_subject: 'Subject',
+  col_content: 'Content',
+  col_date: 'Date',
   col_team: 'Team',
   col_assigned_by: 'Assigned by',
   col_removed_by: 'Removed by',
@@ -96,4 +100,11 @@ module.exports = {
   // Ticket deferred — notification to the requester
   subject_ticket_deferred: 'Update on ticket #{numer} — we need more time',
   ticket_deferred_intro: 'Our team needs more time to respond to your question in ticket <strong>#{numer}</strong>. We appreciate your patience.',
+
+  // Permanent spam deletion — admin notification (sent before deletion)
+  spam_deleted_intro: '<strong>{count} {unit}</strong> marked as spam are about to be permanently deleted. Below is the full list before this data disappears from the system.',
+  spam_deleted_unit_1: 'ticket',
+  spam_deleted_unit_234: 'tickets',
+  spam_deleted_unit_many: 'tickets',
+  spam_deleted_more: '...and {count} more not shown above.',
 };

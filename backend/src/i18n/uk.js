@@ -18,6 +18,8 @@ module.exports = {
   subject_internal_note: '[{appName}] Нова внутрішня нотатка до заявки #{numer}',
   subject_customer_reply_email: '[{appName}] Нова відповідь від заявника у заявці #{numer}',
   subject_reset_password: 'Скидання пароля — {appName}',
+  subject_spam_deleted_single: '[{appName}] Видалено {count} заявку, позначену як спам',
+  subject_spam_deleted_plural: '[{appName}] Видалено {count} заявок, позначених як спам',
 
   // Email body
   greeting_day: 'Доброго дня{name},',
@@ -33,6 +35,8 @@ module.exports = {
   col_ticket_no: 'Номер заявки',
   col_from: 'Від',
   col_subject: 'Тема',
+  col_content: 'Зміст',
+  col_date: 'Дата',
   col_team: 'Команда',
   col_assigned_by: 'Призначив',
   col_removed_by: 'Видалив',
@@ -96,4 +100,11 @@ module.exports = {
   // Заявку відкладено — сповіщення для заявника
   subject_ticket_deferred: 'Оновлення заявки #{numer} — нам потрібно більше часу',
   ticket_deferred_intro: 'Нашій команді потрібно більше часу, щоб відповісти на Ваше питання в заявці <strong>#{numer}</strong>. Просимо про терпіння.',
+
+  // Остаточне видалення спаму — сповіщення для адмінів (перед видаленням)
+  spam_deleted_intro: 'Незабаром буде остаточно видалено <strong>{count} {unit}</strong>, позначених як спам. Нижче повний список, поки ці дані ще не зникли з системи.',
+  spam_deleted_unit_1: 'заявку',
+  spam_deleted_unit_234: 'заявки',
+  spam_deleted_unit_many: 'заявок',
+  spam_deleted_more: '...та ще {count}, не показаних вище.',
 };

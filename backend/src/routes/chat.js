@@ -159,6 +159,7 @@ router.post('/start', startLimiter, async (req, res) => {
         source: 'live_chat',
         zespolId: kanal.zespol_id,
         channelEmail: kanal.notification_email,
+        content: tresc.trim(),
       }).catch(() => {});
     }
 
