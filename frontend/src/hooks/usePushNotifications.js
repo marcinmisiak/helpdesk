@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -30,10 +28,13 @@ export default function usePushNotifications() {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') throw new Error('permission_denied');
 
+      const { data } = await api.get('/push/vapid-key');
+      if (!data.publicKey) throw new Error('vapid_not_configured');
+
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        applicationServerKey: urlBase64ToUint8Array(data.publicKey),
       });
 
       const json = sub.toJSON();
